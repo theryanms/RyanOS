@@ -1,3 +1,5 @@
+import XPBar from "./components/XPBar";
+
 const modules = [
   {
     name: "Quest Log",
@@ -58,14 +60,8 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="text-zinc-400">XP to next level</span>
-            <span className="font-bold text-emerald-300">70 / 100</span>
-          </div>
+          <XPBar currentXP={70} nextLevelXP={100} />
 
-          <div className="h-3 overflow-hidden rounded-full bg-zinc-800">
-            <div className="h-full w-[70%] rounded-full bg-gradient-to-r from-emerald-400 to-lime-300" />
-          </div>
         </header>
 
         <section className="mb-5">
