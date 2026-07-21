@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import XPBar from "./components/XPBar";
 import ModuleCard from "./components/ModuleCard";
 import {
@@ -40,6 +40,8 @@ const modules = [
     symbol: ">_",
   },
 ];
+
+const QUEST_STORAGE_KEY = "ryanos-quests-v1";
 
 const startingQuests = [
   { title: "Code for 30 minutes", xp: 25, type: "INT" },
