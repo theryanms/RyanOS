@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { themes, visualizerModes, type Preferences } from "../lib/preferences";
+import { drawVisualizer } from "../lib/visualizer";
 
-export default function Visualizer() {
+export default function Visualizer({
+  preferences,
+  onChange,
+}: {
+  preferences: Preferences;
+  onChange: (value: Preferences) => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const engine = useRef<{
@@ -19,8 +27,10 @@ export default function Visualizer() {
   const [message, setMessage] = useState(
     "Choose an audio file or enable your microphone to begin.",
   );
-  const [sensitivity, setSensitivity] = useState(1.5);
-  const gain = useRef(1.5);
+  const settings = useRef(preferences);
+  useEffect(() => {
+    settings.current = preferences;
+  }, [preferences]);
 
   function getEngine() {
     if (!engine.current) {
@@ -118,6 +128,7 @@ export default function Visualizer() {
     let average = 0;
     let lastBeat = 0;
     const bins = new Uint8Array(128);
+    const waveform = new Uint8Array(256);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     function draw(time: number) {
       if (!canvas || !ctx) return;
@@ -134,47 +145,30 @@ export default function Visualizer() {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       const current = engine.current;
       bins.fill(0);
-      if (current) current.analyser.getByteFrequencyData(bins);
+      waveform.fill(128);
+      if (current) {
+        current.analyser.getByteFrequencyData(bins);
+        current.analyser.getByteTimeDomainData(waveform);
+      }
       const bass = bins.slice(1, 12).reduce((a, b) => a + b, 0) / (11 * 255);
       average = average * 0.94 + bass * 0.06;
       if (bass > Math.max(0.12, average * 1.12) && time - lastBeat > 220) {
-        pulse = Math.min(1, bass * gain.current);
+        pulse = Math.min(1, bass * settings.current.sensitivity);
         lastBeat = time;
       }
       pulse *= 0.94;
-      ctx.fillStyle = "#080b18";
-      ctx.fillRect(0, 0, width, height);
-      const radius =
-        Math.min(width, height) * (0.17 + (reduced.matches ? 0 : pulse * 0.07));
-      const glow = ctx.createRadialGradient(
-        width / 2,
-        height / 2,
-        radius * 0.2,
-        width / 2,
-        height / 2,
-        radius * 2.5,
-      );
-      glow.addColorStop(0, `rgba(34,211,238,${0.2 + pulse * 0.4})`);
-      glow.addColorStop(1, "rgba(168,85,247,0)");
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, width, height);
-      ctx.beginPath();
-      ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(103,232,249,${0.4 + pulse * 0.6})`;
-      ctx.lineWidth = 3 + pulse * 5;
-      ctx.stroke();
-      const bars = 48;
-      const gap = width / bars;
-      for (let i = 0; i < bars; i++) {
-        const energy = bins[i] / 255;
-        ctx.fillStyle = `hsl(${180 + i * 2}, 80%, ${45 + energy * 25}%)`;
-        ctx.fillRect(
-          i * gap + 1,
-          height - 12 - energy * height * 0.3,
-          Math.max(1, gap - 3),
-          Math.max(2, energy * height * 0.3),
-        );
-      }
+      drawVisualizer(ctx, {
+        width,
+        height,
+        frequencies: bins,
+        waveform,
+        pulse,
+        time,
+        reducedMotion: reduced.matches,
+        hue: themes[settings.current.theme].hue,
+        sensitivity: settings.current.sensitivity,
+        mode: settings.current.visualizer,
+      });
       frame = requestAnimationFrame(draw);
     }
     frame = requestAnimationFrame(draw);
@@ -193,12 +187,35 @@ export default function Visualizer() {
     <section className="panel space-y-5">
       <div>
         <h2>Music Visualizer</h2>
-        <p className="muted">A bass-driven pulse and live frequency bars.</p>
+        <p className="muted">
+          Choose a style. Switch while your music keeps playing.
+        </p>
+      </div>
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label="Visualizer style"
+      >
+        {Object.entries(visualizerModes).map(([id, label]) => (
+          <button
+            className={`tab ${preferences.visualizer === id ? "selected" : ""}`}
+            aria-pressed={preferences.visualizer === id}
+            key={id}
+            onClick={() =>
+              onChange({
+                ...preferences,
+                visualizer: id as Preferences["visualizer"],
+              })
+            }
+          >
+            {label}
+          </button>
+        ))}
       </div>
       <canvas
         ref={canvasRef}
         className="h-80 w-full rounded-2xl border border-cyan-300/20"
-        aria-label="Audio frequency bars and a circle that pulses on detected beats"
+        aria-label={`${visualizerModes[preferences.visualizer]} audio-reactive visualization`}
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
@@ -213,17 +230,16 @@ export default function Visualizer() {
           />
         </label>
         <label>
-          Beat sensitivity · {sensitivity.toFixed(1)}×
+          Beat sensitivity · {preferences.sensitivity.toFixed(1)}×
           <input
             type="range"
             min={0.5}
             max={3}
             step={0.1}
-            value={sensitivity}
+            value={preferences.sensitivity}
             onChange={(e) => {
               const value = Number(e.target.value);
-              setSensitivity(value);
-              gain.current = value;
+              onChange({ ...preferences, sensitivity: value });
             }}
           />
         </label>

@@ -55,7 +55,7 @@ a:focus-visible {
   min-width: 0;
   border: 1px solid #ffffff18;
   border-radius: 1.5rem;
-  background: #10121ddd;
+  background: var(--panel, #10121ddd);
   padding: 1.25rem;
 }
 .panel h2 {
@@ -88,7 +88,7 @@ textarea {
   border: 1px solid #ffffff25;
   border-radius: 0.6rem;
   padding: 0.65rem 0.7rem;
-  background: #080b16;
+  background: var(--input, #080b16);
   color: #f4f4f5;
 }
 input[type="range"] {
@@ -119,13 +119,13 @@ textarea {
 }
 .action:hover,
 .tab:hover {
-  border-color: #6ee7b7;
-  background: #6ee7b710;
+  border-color: var(--accent, #6ee7b7);
+  background: var(--accent-soft, #6ee7b710);
 }
 .tab.selected {
-  color: #a7f3d0;
-  border-color: #6ee7b7;
-  background: #6ee7b715;
+  color: var(--accent, #a7f3d0);
+  border-color: var(--accent, #6ee7b7);
+  background: var(--accent-soft, #6ee7b715);
 }
 .danger {
   color: #fda4af;
@@ -199,4 +199,62 @@ body {
   font-family: var(--font-geist-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+.app-shell {
+  --background: #07070f;
+  --panel: #10121ddd;
+  --input: #080b16;
+  --accent: #6ee7b7;
+  --accent-soft: #6ee7b715;
+  --glow: #34d39920;
+  background: var(--background);
+}
+.app-shell[data-theme="ocean"] {
+  --background: #03131c;
+  --panel: #0b2533ed;
+  --input: #041a25;
+  --accent: #67e8f9;
+  --accent-soft: #67e8f918;
+  --glow: #22d3ee22;
+}
+.app-shell[data-theme="nebula"] {
+  --background: #130a20;
+  --panel: #231435ed;
+  --input: #190d29;
+  --accent: #d8b4fe;
+  --accent-soft: #d8b4fe18;
+  --glow: #c084fc25;
+}
+.app-shell[data-theme="forest"] {
+  --background: #0b150b;
+  --panel: #172619ed;
+  --input: #0d1c10;
+  --accent: #bef264;
+  --accent-soft: #bef26418;
+  --glow: #a3e63520;
+}
+.app-shell[data-theme="ember"] {
+  --background: #1b0e09;
+  --panel: #2d1c14ed;
+  --input: #201109;
+  --accent: #fdba74;
+  --accent-soft: #fdba7418;
+  --glow: #fb923c22;
+}
+.theme-ambient {
+  background:
+    radial-gradient(circle at top, var(--glow), transparent 45%),
+    radial-gradient(circle at bottom right, var(--accent-soft), transparent 45%);
+}
+.app-header {
+  border-color: var(--accent-soft);
+  background: var(--panel);
+  box-shadow: 0 20px 60px var(--glow);
+}
+nav[aria-label="Modules"] button[aria-pressed="true"] {
+  --tw-ring-color: var(--accent);
+}
+.app-shell :focus-visible {
+  outline-color: var(--accent);
 }

@@ -22,6 +22,7 @@ import {
   type Team,
 } from "../lib/trainer";
 import { downloadFile } from "../lib/files";
+import { notifyLocalChange } from "../lib/preferences";
 
 const MatchupCalculator = dynamic(() => import("./MatchupCalculator"), {
   loading: () => (
@@ -94,6 +95,7 @@ export default function TrainerHub() {
     if (!loaded) return;
     try {
       localStorage.setItem(teamStorageKey, JSON.stringify(teams));
+      notifyLocalChange();
     } catch {
       /* Keep the current team available for export. */
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -148,8 +150,9 @@ export default function TrainerHub() {
           </button>
         </div>
         <p className="muted mt-3">
-          Saved on this device. Use Showdown export to take a lineup into
-          battle. Format and season restrictions are set by your league.
+          Teams save on this device and sync when you sign in. Use Showdown
+          export to take a lineup into battle. Format and season restrictions
+          are set by your league.
         </p>
         {dataError && (
           <p role="alert">

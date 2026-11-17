@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ModuleCard from "./components/ModuleCard";
 import QuestCard from "./components/QuestCard";
 import StatsPanel from "./components/StatsPanel";
@@ -9,6 +9,20 @@ import TrainerHub from "./components/TrainerHub";
 import Visualizer from "./components/Visualizer";
 import TerminalPanel from "./components/TerminalPanel";
 import QuestOptions from "./components/QuestOptions";
+import ThemePicker from "./components/ThemePicker";
+import AccountPanel from "./components/AccountPanel";
+import {
+  defaultPreferences,
+  notifyLocalChange,
+  parsePreferences,
+  preferencesKey,
+  type Preferences,
+} from "./lib/preferences";
+import {
+  parseSnapshot,
+  writeLocalSnapshot,
+  type SaveSnapshot,
+} from "./lib/snapshot";
 import { downloadFile } from "./lib/files";
 import {
   teamStorageKey,
@@ -74,12 +88,25 @@ const modules = [
 export default function Home() {
   const [activeModule, setActiveModule] = useState("quests");
   const [storageMessage, setStorageMessage] = useState("");
+  const [preferences, setPreferences] = useState(defaultPreferences);
+  const [trainerEpoch, setTrainerEpoch] = useState(0);
   const progressReadFailed = useRef(false);
   const [appState, setAppState] = useState<RyanOSState>(emptyState);
 
   const [hasLoadedSavedData, setHasLoadedSavedData] = useState(false);
 
   useEffect(() => {
+    try {
+      // Browser preferences are loaded alongside saved progress after hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPreferences(
+        parsePreferences(
+          JSON.parse(localStorage.getItem(preferencesKey) ?? "null"),
+        ),
+      );
+    } catch {
+      setPreferences(defaultPreferences);
+    }
     try {
       const savedState = localStorage.getItem(STORAGE_KEY);
 
@@ -89,7 +116,6 @@ export default function Home() {
         const migratedState = migrateState(parsedState);
 
         // Hydrate browser-only saved progress after the initial render.
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setAppState(refreshQuestPeriods(migratedState));
       } else {
         setAppState(refreshQuestPeriods(emptyState));
@@ -115,6 +141,7 @@ export default function Home() {
 
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      notifyLocalChange();
     } catch (error) {
       console.error("Could not save RyanOS progress:", error);
       // Report a storage failure while keeping in-memory progress available.
@@ -124,6 +151,50 @@ export default function Home() {
       );
     }
   }, [appState, hasLoadedSavedData, storageMessage]);
+
+  useEffect(() => {
+    function changed(event: StorageEvent) {
+      try {
+        if (event.key === STORAGE_KEY && event.newValue)
+          setAppState(
+            refreshQuestPeriods(migrateState(JSON.parse(event.newValue))),
+          );
+        if (event.key === preferencesKey)
+          setPreferences(
+            parsePreferences(JSON.parse(event.newValue ?? "null")),
+          );
+        if (event.key === teamStorageKey) setTrainerEpoch((value) => value + 1);
+      } catch {
+        setStorageMessage(
+          "Another tab changed saved data, but it could not be loaded. Download a backup before restoring.",
+        );
+      }
+    }
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
+
+  const changePreferences = useCallback((value: Preferences) => {
+    const next = parsePreferences(value);
+    setPreferences(next);
+    try {
+      localStorage.setItem(preferencesKey, JSON.stringify(next));
+      notifyLocalChange();
+    } catch {
+      setStorageMessage("Preferences could not be saved on this device.");
+    }
+  }, []);
+
+  const applySnapshot = useCallback((value: SaveSnapshot) => {
+    const snapshot = parseSnapshot(value);
+    writeLocalSnapshot(snapshot);
+    progressReadFailed.current = false;
+    setAppState(refreshQuestPeriods(snapshot.progress));
+    setPreferences(snapshot.preferences);
+    setTrainerEpoch((epoch) => epoch + 1);
+    setStorageMessage("");
+    notifyLocalChange();
+  }, []);
 
   useEffect(() => {
     const refreshTimer = window.setInterval(() => {
@@ -194,6 +265,7 @@ export default function Home() {
           teams,
           rawTeams,
           rawProgress: localStorage.getItem(STORAGE_KEY),
+          preferences,
         },
         null,
         2,
@@ -240,15 +312,12 @@ export default function Home() {
         )
       )
         return;
-      const oldTeams = localStorage.getItem(teamStorageKey);
-      localStorage.setItem(teamStorageKey, JSON.stringify(restoredTeams));
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-      } catch (error) {
-        if (oldTeams === null) localStorage.removeItem(teamStorageKey);
-        else localStorage.setItem(teamStorageKey, oldTeams);
-        throw error;
-      }
+      writeLocalSnapshot({
+        schemaVersion: 1,
+        progress,
+        teams: restoredTeams,
+        preferences: parsePreferences(data.preferences),
+      });
       window.location.reload();
     } catch (error) {
       setStorageMessage(`Restore failed. ${(error as Error).message}`);
@@ -338,11 +407,14 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#07070f] text-zinc-100">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(168,85,247,0.18),transparent_35%)]" />
+    <main
+      data-theme={preferences.theme}
+      className="app-shell min-h-screen overflow-hidden text-zinc-100"
+    >
+      <div className="theme-ambient pointer-events-none fixed inset-0" />
 
       <section className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6">
-        <header className="mb-6 rounded-3xl border border-emerald-400/30 bg-black/50 p-5 shadow-2xl shadow-emerald-500/10">
+        <header className="app-header mb-6 rounded-3xl border p-5 shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.35em] text-emerald-300">
@@ -368,7 +440,15 @@ export default function Home() {
           </div>
 
           <XPBar currentXP={xpIntoLevel} nextLevelXP={xpNeededThisLevel} />
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <ThemePicker
+              preferences={preferences}
+              onChange={changePreferences}
+            />
+          </div>
         </header>
+
+        {hasLoadedSavedData && <AccountPanel onApply={applySnapshot} />}
 
         <section className="mb-5">
           <div className="mb-3 flex items-end justify-between">
@@ -606,16 +686,16 @@ export default function Home() {
           </section>
         </div>
         <div hidden={activeModule !== "trainer"}>
-          <TrainerHub />
+          <TrainerHub key={trainerEpoch} />
         </div>
-        {activeModule === "visualizer" && <Visualizer />}
+        {activeModule === "visualizer" && (
+          <Visualizer preferences={preferences} onChange={changePreferences} />
+        )}
         <div hidden={activeModule !== "terminal"}>
           <TerminalPanel runAppCommand={runAppCommand} />
         </div>
         <footer className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/10 py-4 text-xs text-zinc-400">
-          <span className="mr-auto">
-            RyanOS · Progress saved in this browser
-          </span>
+          <span className="mr-auto">RyanOS · Device saves + account sync</span>
           <button
             className="action"
             onClick={() => {
