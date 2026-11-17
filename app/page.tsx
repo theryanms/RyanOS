@@ -17,6 +17,7 @@ import TerminalPanel from "./components/TerminalPanel";
 import QuestOptions from "./components/QuestOptions";
 import SettingsPanel from "./components/SettingsPanel";
 import ReportsPanel from "./components/ReportsPanel";
+import SettingsDrawer from "./components/SettingsDrawer";
 import { APP_VERSION, syncRequestEvent } from "./lib/diagnostics";
 import AccountPanel from "./components/AccountPanel";
 import {
@@ -93,15 +94,8 @@ const modules = [
     accent: "from-green-400 to-teal-300",
     symbol: ">_",
   },
-  {
-    name: "Settings",
-    subtitle: "Appearance + Preferences",
-    status: "Customize",
-    accent: "from-slate-300 to-indigo-300",
-    symbol: "⚙",
-  },
 ];
-const moduleIds = ["quests", "trainer", "visualizer", "terminal", "settings"];
+const moduleIds = ["quests", "trainer", "visualizer", "terminal"];
 
 export default function Home() {
   const [activeModule, setActiveModule] = useState("quests");
@@ -109,6 +103,7 @@ export default function Home() {
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [trainerEpoch, setTrainerEpoch] = useState(0);
   const [reportOpen, setReportOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const progressReadFailed = useRef(false);
   const [appState, setAppState] = useState<RyanOSState>(emptyState);
 
@@ -385,7 +380,7 @@ export default function Home() {
     }
     if (command === "report") {
       setReportOpen(true);
-      setActiveModule("settings");
+      setSettingsOpen(true);
       return "Opened the report form in Settings.";
     }
     const numbered = [
@@ -445,6 +440,10 @@ export default function Home() {
       return `${focus} weekly quests selected.`;
     }
     if (command === "open") {
+      if (argument === "settings") {
+        setSettingsOpen(true);
+        return "Opened footer settings.";
+      }
       if (!moduleIds.includes(argument))
         throw Error(
           "Choose quests, trainer, visualizer, terminal, or settings.",
@@ -500,23 +499,6 @@ export default function Home() {
 
       <section className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6">
         {hasLoadedSavedData && <AccountPanel onApply={applySnapshot} />}
-        <div className="mb-4 flex flex-wrap justify-end gap-2">
-          <button
-            className="action"
-            onClick={() => setActiveModule("settings")}
-          >
-            Settings
-          </button>
-          <button
-            className="action"
-            onClick={() => {
-              setReportOpen(true);
-              setActiveModule("settings");
-            }}
-          >
-            Report an issue
-          </button>
-        </div>
         <header className="app-header mb-6 rounded-3xl border p-5 shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -556,7 +538,7 @@ export default function Home() {
 
           <nav
             aria-label="Modules"
-            className="grid grid-cols-2 gap-3 md:grid-cols-5"
+            className="grid grid-cols-2 gap-3 md:grid-cols-4"
           >
             {modules.map((item, index) => (
               <button
@@ -790,17 +772,20 @@ export default function Home() {
         <div hidden={activeModule !== "terminal"}>
           <TerminalPanel runAppCommand={runAppCommand} />
         </div>
-        {activeModule === "settings" && (
-          <div className="space-y-5">
-            <SettingsPanel
-              preferences={preferences}
-              onChange={changePreferences}
-            />
-            <ReportsPanel startOpen={reportOpen} />
-          </div>
-        )}
         <footer className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/10 py-4 text-xs text-zinc-400">
           <span className="mr-auto">RyanOS · Device saves + account sync</span>
+          <button className="action" onClick={() => setSettingsOpen(true)}>
+            Settings
+          </button>
+          <button
+            className="action"
+            onClick={() => {
+              setReportOpen(true);
+              setSettingsOpen(true);
+            }}
+          >
+            Report an issue
+          </button>
           <button
             className="action"
             onClick={() => {
@@ -830,6 +815,19 @@ export default function Home() {
             />
           </label>
         </footer>
+        <SettingsDrawer
+          open={settingsOpen}
+          onClose={() => {
+            setSettingsOpen(false);
+            setReportOpen(false);
+          }}
+        >
+          <SettingsPanel
+            preferences={preferences}
+            onChange={changePreferences}
+          />
+          <ReportsPanel startOpen={reportOpen} />
+        </SettingsDrawer>
       </section>
     </main>
   );

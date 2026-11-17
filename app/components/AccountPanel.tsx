@@ -69,13 +69,14 @@ export default function AccountPanel({
   }
 
   const acceptCloud = useCallback(
-    (record: CloudSave) => {
+    (record: CloudSave, collapse = false) => {
       blocked.current = true;
       try {
         onApply(record.snapshot);
         remember(record);
         blocked.current = false;
         setConflict(null);
+        if (collapse) setExpanded(false);
         setStatus("Synced across devices.");
       } catch (error) {
         cloud.current = record;
@@ -117,6 +118,7 @@ export default function AccountPanel({
           remember(latest);
           blocked.current = false;
           setConflict(null);
+          if (force) setExpanded(false);
           setStatus("Synced across devices.");
           return;
         }
@@ -138,6 +140,7 @@ export default function AccountPanel({
       remember(parseAccount(data.account));
       blocked.current = false;
       setConflict(null);
+      if (force) setExpanded(false);
       followUp = snapshotKey(readLocalSnapshot()) !== baseline.current;
       setStatus(
         followUp ? "New changes waiting to sync…" : "Synced across devices.",
@@ -298,6 +301,7 @@ export default function AccountPanel({
       setConfirmation("");
       if (mode === "signup") {
         remember(record);
+        setExpanded(false);
         blocked.current = false;
         setStatus("Account created. Your device progress is saved.");
       } else {
@@ -346,7 +350,7 @@ export default function AccountPanel({
 
   return (
     <details
-      className="panel account-bar mb-4"
+      className={`panel account-bar mb-4 ${account ? "signed-in" : ""}`}
       open={expanded || Boolean(conflict)}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
@@ -397,7 +401,7 @@ export default function AccountPanel({
                 <button
                   className="action"
                   disabled={busy}
-                  onClick={() => acceptCloud(conflict)}
+                  onClick={() => acceptCloud(conflict, true)}
                 >
                   Load account save
                 </button>

@@ -449,3 +449,39 @@ nav[aria-label="Modules"] button[aria-pressed="true"] {
     margin-top: 0.4rem;
   }
 }
+.settings-drawer {
+  width: min(900px, calc(100vw - 2rem));
+  max-height: 90dvh;
+  padding: 0;
+  border: 1px solid #94a3b850;
+  border-radius: 1.25rem;
+  background: var(--background, #07070f);
+  color: var(--foreground, #f4f4f5);
+  margin: auto;
+  overflow: auto;
+}
+.settings-drawer::backdrop {
+  background: #000a;
+  backdrop-filter: blur(5px);
+}
+.settings-drawer-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #94a3b830;
+  background: var(--panel, #10121d);
+}
+.account-bar.signed-in {
+  padding: 0.6rem 0.9rem;
+}
+.account-bar.signed-in summary {
+  font-size: 0.8rem;
+}
+.account-bar.signed-in summary .muted {
+  font-size: 0.7rem;
+}

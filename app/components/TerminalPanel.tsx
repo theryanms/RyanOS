@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { runAdminCommand } from "../lib/admin-commands";
 import {
   APP_VERSION,
   doctor,
@@ -109,9 +110,14 @@ convert 72 f to c
 Use Up / Down arrows for command history.`;
           result +=
             "\n\nRecovery\ndoctor       Check device saves, storage, and server\nlogs         Recent app errors\nstorage      Device save sizes\nversion      App version\nsafe         Stop visual effects and open the terminal\nsync         Retry account sync\nrepair       Validate and refresh readable saved data\nreload       Reload RyanOS\nreport       Open the report form\nopen settings\n\nMore command ideas: countdowns, saved notes, reminders, dice rolls, and a searchable command palette.\nIf the page is fully frozen, reopen /?safe=1.";
+          result +=
+            "\n\nAdministration uses its own namespace: admin help (owner access required).";
           break;
         case "doctor":
           result = await doctor();
+          break;
+        case "admin":
+          result = await runAdminCommand(argument);
           break;
         case "logs":
           result =

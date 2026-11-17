@@ -7,6 +7,7 @@ import {
   type Preferences,
 } from "../lib/preferences";
 import { createVisualizerState, drawVisualizer } from "../lib/visualizer";
+import { captureDisplayAudio, stopStream } from "../lib/audio-capture";
 
 export default function Visualizer({
   preferences,
@@ -21,7 +22,7 @@ export default function Visualizer({
     context: AudioContext;
     analyser: AnalyserNode;
     file?: MediaElementAudioSourceNode;
-    mic?: MediaStreamAudioSourceNode;
+    input?: MediaStreamAudioSourceNode;
     stream?: MediaStream;
   } | null>(null);
   const objectURL = useRef("");
@@ -49,18 +50,45 @@ export default function Visualizer({
     }
     return engine.current;
   }
-  function stopMicrophone() {
+  function stopCapture() {
     request.current++;
     engine.current?.stream?.getTracks().forEach((t) => t.stop());
-    engine.current?.mic?.disconnect();
+    engine.current?.input?.disconnect();
     if (engine.current) {
       engine.current.stream = undefined;
-      engine.current.mic = undefined;
+      engine.current.input = undefined;
     }
     setSource("");
   }
+  function attachLiveInput(
+    current: NonNullable<typeof engine.current>,
+    stream: MediaStream,
+    token: number,
+    kind: "mic" | "shared",
+  ) {
+    current.stream = stream;
+    current.input = current.context.createMediaStreamSource(
+      new MediaStream(stream.getAudioTracks()),
+    );
+    current.input.connect(current.analyser);
+    demoRef.current = false;
+    setDemo(false);
+    setSource(kind);
+    stream.getTracks().forEach((track) =>
+      track.addEventListener("ended", () => {
+        if (request.current !== token || engine.current?.stream !== stream)
+          return;
+        stopCapture();
+        setMessage(
+          kind === "shared"
+            ? "Audio sharing ended. Choose an input to continue."
+            : "Microphone input ended. Reconnect it or choose another input.",
+        );
+      }),
+    );
+  }
   function loadFile(file: File) {
-    stopMicrophone();
+    stopCapture();
     audioRef.current?.pause();
     if (objectURL.current) URL.revokeObjectURL(objectURL.current);
     objectURL.current = URL.createObjectURL(file);
@@ -84,6 +112,8 @@ export default function Visualizer({
       current.file?.disconnect();
       current.file?.connect(current.analyser);
       current.file?.connect(current.context.destination);
+      demoRef.current = false;
+      setDemo(false);
       setSource("file");
       setMessage("Reacting to the bass and energy of your audio.");
     } catch {
@@ -93,14 +123,16 @@ export default function Visualizer({
     }
   }
   async function startMicrophone() {
-    stopMicrophone();
+    stopCapture();
     audioRef.current?.pause();
     engine.current?.file?.disconnect();
     const token = request.current;
+    let stream: MediaStream | undefined;
     try {
       const current = getEngine();
       await current.context.resume();
-      const stream = await navigator.mediaDevices.getUserMedia({
+      if (request.current !== token) return;
+      stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
@@ -111,18 +143,56 @@ export default function Visualizer({
         stream.getTracks().forEach((t) => t.stop());
         return;
       }
-      current.stream = stream;
-      current.mic = current.context.createMediaStreamSource(stream);
-      current.mic.connect(current.analyser);
-      setSource("mic");
+      attachLiveInput(current, stream, token, "mic");
       setMessage(
         "Microphone active. Play music nearby. Stop releases the microphone.",
       );
     } catch {
-      if (request.current === token)
+      if (stream) stopStream(stream);
+      if (request.current === token) {
+        stopCapture();
         setMessage(
           "Microphone access failed. Allow access in your browser, or choose an audio file.",
         );
+      }
+    }
+  }
+  async function startSharedAudio() {
+    stopCapture();
+    audioRef.current?.pause();
+    engine.current?.file?.disconnect();
+    const token = request.current;
+    let stream: MediaStream | undefined;
+    try {
+      const current = getEngine();
+      // Both requests begin in the click handler to retain browser user activation.
+      const [capture, resume] = await Promise.allSettled([
+        captureDisplayAudio(navigator.mediaDevices),
+        current.context.resume(),
+      ]);
+      if (capture.status === "rejected") throw capture.reason;
+      stream = capture.value;
+      if (resume.status === "rejected") throw resume.reason;
+      if (request.current !== token) {
+        stopStream(stream);
+        return;
+      }
+      attachLiveInput(current, stream, token, "shared");
+      setMessage(
+        "Listening to shared audio. The browser sharing indicator stays active until you press Stop or stop sharing.",
+      );
+    } catch (error) {
+      if (stream) stopStream(stream);
+      if (request.current === token) {
+        stopCapture();
+        setMessage(
+          error instanceof Error &&
+            error.name !== "NotAllowedError" &&
+            error.name !== "AbortError"
+            ? error.message
+            : "Audio sharing was cancelled or blocked. Try again and enable Share audio, or use a file or microphone.",
+        );
+      }
     }
   }
   useEffect(() => {
@@ -344,7 +414,7 @@ export default function Visualizer({
         controls
         className="w-full"
         onPlay={() => {
-          stopMicrophone();
+          stopCapture();
           void playFile();
         }}
         onError={() =>
@@ -356,6 +426,13 @@ export default function Visualizer({
       <div className="flex flex-wrap gap-3">
         <button
           className="action"
+          disabled={source === "shared"}
+          onClick={() => void startSharedAudio()}
+        >
+          Use tab / system audio
+        </button>
+        <button
+          className="action"
           disabled={source === "mic"}
           onClick={() => void startMicrophone()}
         >
@@ -364,7 +441,7 @@ export default function Visualizer({
         <button
           className="action"
           onClick={() => {
-            stopMicrophone();
+            stopCapture();
             audioRef.current?.pause();
             engine.current?.file?.disconnect();
             setMessage(
@@ -375,6 +452,13 @@ export default function Visualizer({
           Stop
         </button>
       </div>
+      <p className="muted">
+        For audio already playing on this computer, choose a playing tab or
+        screen and enable Share audio. Availability depends on your browser and
+        operating system. The browser supplies a screen-sharing stream, and only
+        its audio feeds the visualizer. Input stays on this device. On phones,
+        use a file or microphone when shared audio is unavailable.
+      </p>
       <p className="notice" role="status">
         {message}
       </p>

@@ -55,11 +55,19 @@ The database persists across deployments. Use the same production `DATABASE_URL`
 
 ## Settings, recovery, and reports
 
-Appearance controls live in the Settings module. Presets include dark and light themes, with custom accent/background colors, visualizer palettes, intensity, reduced motion, and quest-panel visibility controls. Guest users can choose **Continue as guest** to keep device saving and stop the welcome prompt on that browser.
+Appearance and support controls open from the **Settings** button in the footer beside the backups. Presets include dark and light themes, with custom accent/background colors, visualizer palettes, intensity, reduced motion, and quest-panel visibility controls. Guest users can choose **Continue as guest** to keep device saving and stop the welcome prompt on that browser. Signed-in account controls collapse into a compact status bar after sign-in or save selection. Save conflicts expand the account controls for resolution.
 
 Recovery commands include `doctor`, `logs`, `storage`, `version`, `safe`, `sync`, `repair`, `backup`, `reload`, and `report`. If the page is fully frozen, open `/?safe=1` from the browser address bar. Safe mode disables animated effects for that visit. `repair` validates readable data and refreshes quest periods. It preserves earned XP and teams. Invalid data can be downloaded for recovery instead of discarded.
 
 Reports are stored in Neon and can include optional browser diagnostics. Set `ADMIN_USERNAMES` in Vercel to a comma-separated list of existing account usernames, then redeploy. Those accounts can read reports and change their status in **Settings → Reports**. Admin status does not change quest rewards or grant access to other users' saved progress.
+
+Administration uses its own terminal namespace. Run `admin help`, `admin reports`, or `admin triage|resolve|reopen <full-report-id>`. Every operation is checked against the signed-in account on the server. Recovery and quest commands remain available to regular users and operate on their own device/account.
+
+## Visualizing currently playing audio
+
+Use **Use tab / system audio** in the visualizer. Choose a playing browser tab, or a screen with audio sharing enabled when offered. The capture request starts from your button click and requires browser permission. Browser and operating-system support determine which sources are available. Desktop Chrome and Edge offer the broadest support. Other phone apps' audio generally cannot be captured directly by a web page. Audio-file and microphone inputs remain available, including music playing through nearby speakers on another device.
+
+The browser requires a screen-sharing stream for this input. Only its audio is connected to the visualizer. Captured media is analyzed locally. Stop, browser Stop sharing, changing inputs, and leaving the visualizer release the capture tracks. A source with no audio is rejected with instructions to enable audio sharing.
 
 Optional email notifications use Resend. Configure these server-only Vercel environment variables and redeploy to enable them.
 
