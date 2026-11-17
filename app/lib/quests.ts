@@ -1,10 +1,4 @@
-export type StatType =
-  | "INT"
-  | "CON"
-  | "STR"
-  | "CHA"
-  | "WIS"
-  | "DEX";
+export type StatType = "INT" | "CON" | "STR" | "CHA" | "WIS" | "DEX";
 
 export type WeeklyFocus =
   | "Coding"
@@ -129,7 +123,7 @@ RyanOS generates one quest from each category:
 4. Hobbies and personal progress
 */
 
-const dailyQuestPools: QuestTemplate[][] = [
+export const dailyQuestPools: QuestTemplate[][] = [
   [
     {
       title: "Clean one small area",
@@ -652,8 +646,7 @@ function hashText(text: string) {
 
 export function createDailyQuests(dateKey: string): Quest[] {
   return dailyQuestPools.map((pool, poolIndex) => {
-    const templateIndex =
-      hashText(`${dateKey}-${poolIndex}`) % pool.length;
+    const templateIndex = hashText(`${dateKey}-${poolIndex}`) % pool.length;
 
     return {
       ...pool[templateIndex],
@@ -667,7 +660,7 @@ export function createDailyQuests(dateKey: string): Quest[] {
 
 export function createWeeklyQuests(
   focus: WeeklyFocus,
-  weekKey: string
+  weekKey: string,
 ): Quest[] {
   return weeklyQuestPools[focus].map((quest, index) => ({
     ...quest,
@@ -688,9 +681,82 @@ function getStatsFromCompletedQuests(quests: Quest[]) {
   return stats;
 }
 
-export function migrateState(
-  savedState: Partial<RyanOSState>
-): RyanOSState {
+export function migrateState(savedState: Partial<RyanOSState>): RyanOSState {
+  if (
+    !savedState ||
+    typeof savedState !== "object" ||
+    Array.isArray(savedState)
+  ) {
+    throw new Error("Progress must be an object.");
+  }
+  for (const key of Object.keys(emptyState) as (keyof RyanOSState)[]) {
+    const value = savedState[key];
+    const fallback = emptyState[key];
+    if (
+      value === undefined ||
+      fallback === null ||
+      typeof fallback === "object"
+    )
+      continue;
+    if (
+      typeof value !== typeof fallback ||
+      (typeof value === "number" && (!Number.isSafeInteger(value) || value < 0))
+    ) {
+      throw new Error(`Invalid progress field: ${key}`);
+    }
+  }
+  if (
+    savedState.weeklyFocus != null &&
+    !weeklyFocusOptions.includes(savedState.weeklyFocus)
+  ) {
+    throw new Error("Invalid weekly focus.");
+  }
+  for (const quests of [savedState.dailyQuests, savedState.weeklyQuests]) {
+    if (
+      quests !== undefined &&
+      (!Array.isArray(quests) ||
+        quests.some(
+          (q) =>
+            !q ||
+            typeof q.id !== "string" ||
+            typeof q.title !== "string" ||
+            typeof q.description !== "string" ||
+            typeof q.completed !== "boolean" ||
+            !Number.isSafeInteger(q.xp) ||
+            q.xp < 0 ||
+            !(q.type in emptyStats),
+        ))
+    ) {
+      throw new Error("Invalid saved quest.");
+    }
+  }
+  if (
+    savedState.stats &&
+    Object.entries(savedState.stats).some(
+      ([key, value]) =>
+        !(key in emptyStats) || !Number.isSafeInteger(value) || value < 0,
+    )
+  ) {
+    throw new Error("Invalid saved stats.");
+  }
+  if (
+    savedState.questHistory !== undefined &&
+    (!Array.isArray(savedState.questHistory) ||
+      savedState.questHistory.some(
+        (entry) =>
+          !entry ||
+          typeof entry.id !== "string" ||
+          typeof entry.questId !== "string" ||
+          typeof entry.title !== "string" ||
+          typeof entry.completedAt !== "string" ||
+          !Number.isSafeInteger(entry.xp) ||
+          entry.xp < 0 ||
+          !(entry.type in emptyStats) ||
+          !["daily", "weekly"].includes(entry.period),
+      ))
+  ) {
+    throw new Error("Invalid quest history.");
+  }
   const savedDailyQuests = Array.isArray(savedState.dailyQuests)
     ? savedState.dailyQuests
     : [];
@@ -719,17 +785,13 @@ export function migrateState(
     weeklyQuests: savedWeeklyQuests,
 
     dailyStreak: savedState.dailyStreak ?? 0,
-    lastCompletedDailyDate:
-      savedState.lastCompletedDailyDate ?? "",
-    dailyBonusAwarded:
-      savedState.dailyBonusAwarded ?? false,
-    dailyRerollsRemaining:
-      savedState.dailyRerollsRemaining ?? DAILY_REROLLS,
+    lastCompletedDailyDate: savedState.lastCompletedDailyDate ?? "",
+    dailyBonusAwarded: savedState.dailyBonusAwarded ?? false,
+    dailyRerollsRemaining: savedState.dailyRerollsRemaining ?? DAILY_REROLLS,
 
     weeklyStreak: savedState.weeklyStreak ?? 0,
     lastCompletedWeek: savedState.lastCompletedWeek ?? "",
-    weeklyBonusAwarded:
-      savedState.weeklyBonusAwarded ?? false,
+    weeklyBonusAwarded: savedState.weeklyBonusAwarded ?? false,
 
     questHistory: Array.isArray(savedState.questHistory)
       ? savedState.questHistory
@@ -737,9 +799,7 @@ export function migrateState(
   };
 }
 
-export function refreshQuestPeriods(
-  state: RyanOSState
-): RyanOSState {
+export function refreshQuestPeriods(state: RyanOSState): RyanOSState {
   const today = getDateKey();
   const currentWeek = getWeekKey();
 
@@ -758,9 +818,7 @@ export function refreshQuestPeriods(
       dailyQuests: createDailyQuests(today),
       dailyBonusAwarded: false,
       dailyRerollsRemaining: DAILY_REROLLS,
-      dailyStreak: shouldResetDailyStreak
-        ? 0
-        : state.dailyStreak,
+      dailyStreak: shouldResetDailyStreak ? 0 : state.dailyStreak,
     };
   }
 
@@ -777,9 +835,7 @@ export function refreshQuestPeriods(
       weeklyFocus: null,
       weeklyQuests: [],
       weeklyBonusAwarded: false,
-      weeklyStreak: shouldResetWeeklyStreak
-        ? 0
-        : state.weeklyStreak,
+      weeklyStreak: shouldResetWeeklyStreak ? 0 : state.weeklyStreak,
     };
   }
 
@@ -790,7 +846,7 @@ function updateStreak(
   currentStreak: number,
   lastCompletedPeriod: string,
   currentPeriod: string,
-  previousPeriod: string
+  previousPeriod: string,
 ) {
   if (lastCompletedPeriod === currentPeriod) {
     return currentStreak;
@@ -806,11 +862,9 @@ function updateStreak(
 function addHistoryEntry(
   history: QuestHistoryEntry[],
   quest: Quest,
-  period: QuestGroup
+  period: QuestGroup,
 ) {
-  const existingEntry = history.some(
-    (entry) => entry.questId === quest.id
-  );
+  const existingEntry = history.some((entry) => entry.questId === quest.id);
 
   if (existingEntry) {
     return history;
@@ -829,62 +883,39 @@ function addHistoryEntry(
   return [...history, newEntry].slice(-MAX_HISTORY_ENTRIES);
 }
 
-function removeHistoryEntry(
-  history: QuestHistoryEntry[],
-  questId: string
-) {
+function removeHistoryEntry(history: QuestHistoryEntry[], questId: string) {
   return history.filter((entry) => entry.questId !== questId);
 }
 
 function rollbackDailyCompletion(
-  state: RyanOSState
+  state: RyanOSState,
 ): Pick<
   RyanOSState,
-  | "dailyStreak"
-  | "lastCompletedDailyDate"
-  | "dailyBonusAwarded"
+  "dailyStreak" | "lastCompletedDailyDate" | "dailyBonusAwarded"
 > {
-  const previousDay = getPreviousDateKey(
-    state.dailyDate
-  );
+  const previousDay = getPreviousDateKey(state.dailyDate);
 
   return {
-    dailyStreak: Math.max(
-      0,
-      state.dailyStreak - 1
-    ),
+    dailyStreak: Math.max(0, state.dailyStreak - 1),
 
-    lastCompletedDailyDate:
-      state.dailyStreak > 1
-        ? previousDay
-        : "",
+    lastCompletedDailyDate: state.dailyStreak > 1 ? previousDay : "",
 
     dailyBonusAwarded: false,
   };
 }
 
 function rollbackWeeklyCompletion(
-  state: RyanOSState
+  state: RyanOSState,
 ): Pick<
   RyanOSState,
-  | "weeklyStreak"
-  | "lastCompletedWeek"
-  | "weeklyBonusAwarded"
+  "weeklyStreak" | "lastCompletedWeek" | "weeklyBonusAwarded"
 > {
-  const previousWeek = getPreviousWeekKey(
-    state.weekKey
-  );
+  const previousWeek = getPreviousWeekKey(state.weekKey);
 
   return {
-    weeklyStreak: Math.max(
-      0,
-      state.weeklyStreak - 1
-    ),
+    weeklyStreak: Math.max(0, state.weeklyStreak - 1),
 
-    lastCompletedWeek:
-      state.weeklyStreak > 1
-        ? previousWeek
-        : "",
+    lastCompletedWeek: state.weeklyStreak > 1 ? previousWeek : "",
 
     weeklyBonusAwarded: false,
   };
@@ -893,66 +924,47 @@ function rollbackWeeklyCompletion(
 export function toggleQuestInState(
   state: RyanOSState,
   questId: string,
-  group: QuestGroup
+  group: QuestGroup,
 ): RyanOSState {
-  const questList =
-    group === "daily"
-      ? state.dailyQuests
-      : state.weeklyQuests;
+  state = refreshQuestPeriods(state);
+  const questList = group === "daily" ? state.dailyQuests : state.weeklyQuests;
 
-  const selectedQuest = questList.find(
-    (quest) => quest.id === questId
-  );
+  const selectedQuest = questList.find((quest) => quest.id === questId);
 
   if (!selectedQuest) {
     return state;
   }
 
-  const isNowCompleted =
-    !selectedQuest.completed;
+  const isNowCompleted = !selectedQuest.completed;
 
-  const updatedQuests = questList.map(
-    (quest) =>
-      quest.id === questId
-        ? {
-            ...quest,
-            completed: isNowCompleted,
-          }
-        : quest
+  const updatedQuests = questList.map((quest) =>
+    quest.id === questId
+      ? {
+          ...quest,
+          completed: isNowCompleted,
+        }
+      : quest,
   );
 
-  const xpChange = isNowCompleted
-    ? selectedQuest.xp
-    : -selectedQuest.xp;
+  const xpChange = isNowCompleted ? selectedQuest.xp : -selectedQuest.xp;
 
   const updatedStats = {
     ...state.stats,
 
     [selectedQuest.type]: Math.max(
       0,
-      state.stats[selectedQuest.type] +
-        xpChange
+      state.stats[selectedQuest.type] + xpChange,
     ),
   };
 
   const updatedHistory = isNowCompleted
-    ? addHistoryEntry(
-        state.questHistory,
-        selectedQuest,
-        group
-      )
-    : removeHistoryEntry(
-        state.questHistory,
-        selectedQuest.id
-      );
+    ? addHistoryEntry(state.questHistory, selectedQuest, group)
+    : removeHistoryEntry(state.questHistory, selectedQuest.id);
 
   let updatedState: RyanOSState = {
     ...state,
 
-    lifetimeXP: Math.max(
-      0,
-      state.lifetimeXP + xpChange
-    ),
+    lifetimeXP: Math.max(0, state.lifetimeXP + xpChange),
 
     stats: updatedStats,
     questHistory: updatedHistory,
@@ -967,28 +979,17 @@ export function toggleQuestInState(
   };
 
   const allQuestsCompleted =
-    updatedQuests.length > 0 &&
-    updatedQuests.every(
-      (quest) => quest.completed
-    );
+    updatedQuests.length > 0 && updatedQuests.every((quest) => quest.completed);
 
   /*
   Remove a previously earned daily bonus if
   the user unchecks a daily quest.
   */
-  if (
-    group === "daily" &&
-    !allQuestsCompleted &&
-    state.dailyBonusAwarded
-  ) {
+  if (group === "daily" && !allQuestsCompleted && state.dailyBonusAwarded) {
     updatedState = {
       ...updatedState,
 
-      lifetimeXP: Math.max(
-        0,
-        updatedState.lifetimeXP -
-          DAILY_COMPLETION_BONUS
-      ),
+      lifetimeXP: Math.max(0, updatedState.lifetimeXP - DAILY_COMPLETION_BONUS),
 
       ...rollbackDailyCompletion(state),
     };
@@ -998,18 +999,13 @@ export function toggleQuestInState(
   Remove a previously earned weekly bonus if
   the user unchecks a weekly quest.
   */
-  if (
-    group === "weekly" &&
-    !allQuestsCompleted &&
-    state.weeklyBonusAwarded
-  ) {
+  if (group === "weekly" && !allQuestsCompleted && state.weeklyBonusAwarded) {
     updatedState = {
       ...updatedState,
 
       lifetimeXP: Math.max(
         0,
-        updatedState.lifetimeXP -
-          WEEKLY_COMPLETION_BONUS
+        updatedState.lifetimeXP - WEEKLY_COMPLETION_BONUS,
       ),
 
       ...rollbackWeeklyCompletion(state),
@@ -1025,17 +1021,12 @@ export function toggleQuestInState(
     allQuestsCompleted &&
     !updatedState.dailyBonusAwarded
   ) {
-    const previousDay =
-      getPreviousDateKey(
-        updatedState.dailyDate
-      );
+    const previousDay = getPreviousDateKey(updatedState.dailyDate);
 
     updatedState = {
       ...updatedState,
 
-      lifetimeXP:
-        updatedState.lifetimeXP +
-        DAILY_COMPLETION_BONUS,
+      lifetimeXP: updatedState.lifetimeXP + DAILY_COMPLETION_BONUS,
 
       dailyBonusAwarded: true,
 
@@ -1043,11 +1034,10 @@ export function toggleQuestInState(
         updatedState.dailyStreak,
         updatedState.lastCompletedDailyDate,
         updatedState.dailyDate,
-        previousDay
+        previousDay,
       ),
 
-      lastCompletedDailyDate:
-        updatedState.dailyDate,
+      lastCompletedDailyDate: updatedState.dailyDate,
     };
   }
 
@@ -1060,17 +1050,12 @@ export function toggleQuestInState(
     allQuestsCompleted &&
     !updatedState.weeklyBonusAwarded
   ) {
-    const previousWeek =
-      getPreviousWeekKey(
-        updatedState.weekKey
-      );
+    const previousWeek = getPreviousWeekKey(updatedState.weekKey);
 
     updatedState = {
       ...updatedState,
 
-      lifetimeXP:
-        updatedState.lifetimeXP +
-        WEEKLY_COMPLETION_BONUS,
+      lifetimeXP: updatedState.lifetimeXP + WEEKLY_COMPLETION_BONUS,
 
       weeklyBonusAwarded: true,
 
@@ -1078,11 +1063,10 @@ export function toggleQuestInState(
         updatedState.weeklyStreak,
         updatedState.lastCompletedWeek,
         updatedState.weekKey,
-        previousWeek
+        previousWeek,
       ),
 
-      lastCompletedWeek:
-        updatedState.weekKey,
+      lastCompletedWeek: updatedState.weekKey,
     };
   }
 
@@ -1091,14 +1075,15 @@ export function toggleQuestInState(
 
 export function rerollDailyQuest(
   state: RyanOSState,
-  questId: string
+  questId: string,
 ): RyanOSState {
+  state = refreshQuestPeriods(state);
   if (state.dailyRerollsRemaining <= 0) {
     return state;
   }
 
   const questIndex = state.dailyQuests.findIndex(
-    (quest) => quest.id === questId
+    (quest) => quest.id === questId,
   );
 
   if (questIndex === -1) {
@@ -1111,8 +1096,7 @@ export function rerollDailyQuest(
     return state;
   }
 
-  const poolIndex =
-    currentQuest.poolIndex ?? questIndex;
+  const poolIndex = currentQuest.poolIndex ?? questIndex;
 
   const pool = dailyQuestPools[poolIndex];
 
@@ -1122,19 +1106,15 @@ export function rerollDailyQuest(
 
   const currentTemplateIndex =
     currentQuest.templateIndex ??
-    pool.findIndex(
-      (template) =>
-        template.title === currentQuest.title
-    );
+    pool.findIndex((template) => template.title === currentQuest.title);
 
   let newTemplateIndex =
     hashText(
-      `${state.dailyDate}-${poolIndex}-reroll-${state.dailyRerollsRemaining}`
+      `${state.dailyDate}-${poolIndex}-reroll-${state.dailyRerollsRemaining}`,
     ) % pool.length;
 
   if (newTemplateIndex === currentTemplateIndex) {
-    newTemplateIndex =
-      (newTemplateIndex + 1) % pool.length;
+    newTemplateIndex = (newTemplateIndex + 1) % pool.length;
   }
 
   const newQuest: Quest = {
@@ -1151,7 +1131,6 @@ export function rerollDailyQuest(
   return {
     ...state,
     dailyQuests: updatedDailyQuests,
-    dailyRerollsRemaining:
-      state.dailyRerollsRemaining - 1,
+    dailyRerollsRemaining: state.dailyRerollsRemaining - 1,
   };
 }

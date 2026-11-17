@@ -30,6 +30,7 @@ export default function QuestCard({
         <button
           type="button"
           onClick={onToggle}
+          aria-pressed={quest.completed}
           className="min-w-0 flex-1 text-left transition active:scale-[0.99]"
         >
           <p
@@ -66,6 +67,7 @@ export default function QuestCard({
           {group === "daily" &&
             !quest.completed &&
             canReroll &&
+            !quest.id.startsWith("custom-") &&
             onReroll && (
               <button
                 type="button"
