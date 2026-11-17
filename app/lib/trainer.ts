@@ -7,6 +7,8 @@ export type Species = {
   types: string[];
   baseStats: Spread;
   abilities: Record<string, string>;
+  baseSpecies?: string;
+  requiredItem?: string;
 };
 export type Move = {
   name: string;
@@ -31,11 +33,13 @@ export type Member = {
   ivs: Spread;
   shiny: boolean;
   gender: string;
+  statSystem?: "ev" | "sp";
 };
 export type Team = {
   id: string;
   name: string;
   format: string;
+  ruleset?: "custom" | "reg-m-c";
   notes: string;
   members: Member[];
 };
@@ -77,21 +81,22 @@ export const natures: Record<string, [BattleStat, BattleStat] | null> = {
   Careful: ["spd", "spa"],
   Quirky: null,
 };
-export function newMember(species: Species): Member {
+export function newMember(species: Species, champions = false): Member {
   return {
     id: crypto.randomUUID(),
     species: species.name,
     nickname: "",
-    item: "",
+    item: species.requiredItem ?? "",
     ability: species.abilities["0"],
     nature: "Hardy",
-    level: 100,
+    level: champions ? 50 : 100,
     tera: species.types[0],
     moves: ["", "", "", ""],
     evs: spread(0),
     ivs: spread(31),
     shiny: false,
     gender: "",
+    ...(champions ? { statSystem: "sp" as const } : {}),
   };
 }
 export function battleStats(member: Member, species: Species): Spread {
@@ -113,6 +118,15 @@ export function battleStats(member: Member, species: Species): Spread {
           ? 1
           : base + member.level + 10
         : Math.floor((base + 5) * modifier);
+    if (member.statSystem === "sp")
+      result[stat] =
+        stat === "hp"
+          ? species.baseStats.hp === 1
+            ? 1
+            : species.baseStats.hp + member.evs.hp + 75
+          : Math.floor(
+              (species.baseStats[stat] + member.evs[stat] + 20) * modifier,
+            );
   }
   return result;
 }
@@ -176,7 +190,9 @@ export function teamSuggestions(team: Team, dex: Record<string, Species>) {
     if (member.moves.filter(Boolean).length < 4)
       suggestions.push(`${member.species} has an open move slot.`);
     if (!Object.values(member.evs).some(Boolean))
-      suggestions.push(`Assign EVs to ${member.species} before battling.`);
+      suggestions.push(
+        `Assign ${member.statSystem === "sp" ? "stat points" : "EVs"} to ${member.species} before battling.`,
+      );
   }
   for (const type of types) {
     const weak = team.members.filter(
@@ -203,7 +219,7 @@ export function teamSuggestions(team: Team, dex: Record<string, Species>) {
     suggestions.push(`${6 - team.members.length} lineup slots remain open.`);
   if (!suggestions.length)
     suggestions.push(
-      "All six sets have moves and EVs. Validate the export in Showdown for your league format.",
+      "All six sets have moves and stat allocations. Validate the export in Showdown for your league format.",
     );
   return suggestions;
 }
@@ -221,6 +237,11 @@ export function parseTeams(value: unknown): Team[] {
     )
       throw Error("Invalid saved team.");
     for (const member of team.members) {
+      if (
+        member?.statSystem !== undefined &&
+        !["ev", "sp"].includes(member.statSystem)
+      )
+        throw Error("Invalid stat system.");
       if (
         !member ||
         ![
@@ -258,6 +279,15 @@ export function parseTeams(value: unknown): Team[] {
         statKeys.reduce((sum, stat) => sum + member.evs[stat], 0) > 510
       )
         throw Error("Invalid saved stat spread.");
+      if (
+        member.statSystem === "sp" &&
+        (statKeys.some(
+          (stat) => member.evs[stat] > 32 || member.ivs[stat] !== 31,
+        ) ||
+          Object.values(member.evs as Spread).reduce((a, b) => a + b, 0) > 66 ||
+          member.level !== 50)
+      )
+        throw Error("Invalid Champions stat-point spread.");
     }
   }
   return value;
@@ -295,7 +325,7 @@ export function exportTeam(team: Team) {
         `Ability: ${m.ability}`,
         `Level: ${m.level}`,
         ...(m.shiny ? ["Shiny: Yes"] : []),
-        `Tera Type: ${m.tera}`,
+        ...(m.statSystem === "sp" ? [] : [`Tera Type: ${m.tera}`]),
         `EVs: ${
           statKeys
             .filter((s) => m.evs[s])
@@ -303,7 +333,11 @@ export function exportTeam(team: Team) {
             .join(" / ") || "0 HP"
         }`,
         `${m.nature} Nature`,
-        `IVs: ${statKeys.map((s) => `${m.ivs[s]} ${labels[s]}`).join(" / ")}`,
+        ...(m.statSystem === "sp"
+          ? []
+          : [
+              `IVs: ${statKeys.map((s) => `${m.ivs[s]} ${labels[s]}`).join(" / ")}`,
+            ]),
         ...m.moves.filter(Boolean).map((move) => `- ${move}`),
       ].join("\n"),
     )
@@ -312,6 +346,7 @@ export function exportTeam(team: Team) {
 export function importTeam(
   text: string,
   dex: Record<string, Species>,
+  champions = false,
 ): Member[] {
   const blocks = text
     .trim()
@@ -330,7 +365,7 @@ export function importTeam(
     const species = dex[toID(named?.[2] ?? header)];
     if (!species) throw new Error(`Unknown Pokémon: ${named?.[2] ?? header}`);
     const member = {
-      ...newMember(species),
+      ...newMember(species, champions),
       nickname: named?.[1] ?? "",
       item,
       gender,
@@ -344,8 +379,8 @@ export function importTeam(
       else if (line.startsWith("Level: ")) member.level = Number(line.slice(7));
       else if (line === "Shiny: Yes") member.shiny = true;
       else if (line.endsWith(" Nature")) member.nature = line.slice(0, -7);
-      else if (/^(EVs|IVs):/.test(line)) {
-        const target = line.startsWith("EVs") ? member.evs : member.ivs;
+      else if (/^(EVs|IVs|SPs):/.test(line)) {
+        const target = line.startsWith("IVs") ? member.ivs : member.evs;
         for (const part of line.slice(5).split("/")) {
           const match = part
             .trim()
@@ -363,12 +398,18 @@ export function importTeam(
       !(member.nature in natures) ||
       !teraTypes.includes(member.tera) ||
       statKeys.some((s) => member.evs[s] > 252 || member.ivs[s] > 31) ||
-      Object.values(member.evs).reduce((a, b) => a + b, 0) > 510
+      Object.values(member.evs).reduce((a, b) => a + b, 0) > 510 ||
+      (champions &&
+        (statKeys.some(
+          (stat) => member.evs[stat] > 32 || member.ivs[stat] !== 31,
+        ) ||
+          Object.values(member.evs).reduce((a, b) => a + b, 0) > 66))
     )
       throw new Error(
         `Check moves, level, nature, Tera type, EVs, and IVs for ${member.species}.`,
       );
     member.moves = Array.from({ length: 4 }, (_, i) => moves[i] ?? "");
+    if (champions) member.level = 50;
     return member;
   });
 }

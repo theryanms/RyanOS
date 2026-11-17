@@ -28,6 +28,11 @@ export async function database() {
         attempts integer NOT NULL,
         started_at timestamptz NOT NULL DEFAULT now()
       )`,
+        sql`CREATE TABLE IF NOT EXISTS ryanos_reports (
+          id uuid PRIMARY KEY, username text, category text NOT NULL, message text NOT NULL,
+          contact text, diagnostics jsonb, status text NOT NULL DEFAULT 'open',
+          notification text NOT NULL DEFAULT 'disabled', created_at timestamptz NOT NULL DEFAULT now()
+        )`,
       ])
       .catch((error) => {
         initialization = undefined;

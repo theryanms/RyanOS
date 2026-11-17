@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  dailyQuestPools,
+  dailyQuestCatalog,
   type RyanOSState,
   type StatType,
 } from "../lib/quests";
@@ -40,8 +40,7 @@ export default function QuestOptions({
             />
           </label>
           <div className="my-3 max-h-64 space-y-2 overflow-y-auto">
-            {dailyQuestPools
-              .flat()
+            {dailyQuestCatalog
               .filter((q) =>
                 q.title.toLowerCase().includes(filter.toLowerCase()),
               )

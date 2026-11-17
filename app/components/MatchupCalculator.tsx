@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import StatEditor from "./StatEditor";
+import { isRegMC, regMCIds } from "../lib/rulesets";
 import { Field, type State } from "@smogon/calc";
 import {
   damageMatchup,
@@ -12,7 +14,6 @@ import {
   importTeam,
   natures,
   newMember,
-  statKeys,
   toID,
   teraTypes,
   type Member,
@@ -34,10 +35,12 @@ function ConditionsEditor({
   label,
   conditions,
   onChange,
+  champions = false,
 }: {
   label: string;
   conditions: BattleConditions;
   onChange: (value: BattleConditions) => void;
+  champions?: boolean;
 }) {
   return (
     <fieldset className="space-y-3 rounded-xl border border-white/10 p-3">
@@ -76,16 +79,18 @@ function ConditionsEditor({
             ))}
           </select>
         </label>
-        <label className="flex-row items-center">
-          <input
-            type="checkbox"
-            checked={conditions.teraActive}
-            onChange={(e) =>
-              onChange({ ...conditions, teraActive: e.target.checked })
-            }
-          />
-          Terastallized
-        </label>
+        {!champions && (
+          <label className="flex-row items-center">
+            <input
+              type="checkbox"
+              checked={conditions.teraActive}
+              onChange={(e) =>
+                onChange({ ...conditions, teraActive: e.target.checked })
+              }
+            />
+            Terastallized
+          </label>
+        )}
         <label className="flex-row items-center">
           <input
             type="checkbox"
@@ -212,11 +217,13 @@ export default function MatchupCalculator({
   team: Team;
   dex: Record<string, Species>;
 }) {
+  const champions = isRegMC(team);
+  const initialOpponent = champions ? dex.incineroar : dex.blissey;
   const [selected, setSelected] = useState(team.members[0]?.id ?? "");
   const [opponent, setOpponent] = useState<Member | null>(() =>
-    dex.blissey ? newMember(dex.blissey) : null,
+    initialOpponent ? newMember(initialOpponent, champions) : null,
   );
-  const [speciesSearch, setSpeciesSearch] = useState("Blissey");
+  const [speciesSearch, setSpeciesSearch] = useState(initialOpponent?.name ?? "");
   const [importText, setImportText] = useState("");
   const [imported, setImported] = useState<Member[]>([]);
   const [message, setMessage] = useState("");
@@ -225,7 +232,7 @@ export default function MatchupCalculator({
   const [opponentConditions, setOpponentConditions] =
     useState<BattleConditions>(defaultConditions);
   const [field, setField] = useState<Partial<State.Field>>({
-    gameType: "Singles",
+    gameType: champions ? "Doubles" : "Singles",
     attackerSide: {},
     defenderSide: {},
   });
@@ -266,10 +273,12 @@ export default function MatchupCalculator({
       <div>
         <h3 className="text-xl font-bold">Damage calculator</h3>
         <p className="muted mt-2">
-          Gen 9 calculations powered by the official Showdown engine. Your saved
-          set supplies moves, item, ability, level, nature, EVs, and IVs.
-          Opponent defaults are level 100, no item, Hardy nature, zero EVs, and
-          31 IVs until edited or imported.
+          {champions
+            ? "Champions REG M-C calculations · level 50 · stat points · Mega Evolution."
+            : "Gen 9 calculations · EVs and IVs."}{" "}
+          Powered by the Showdown engine. Import an opponent’s full set for a
+          useful comparison. New opponents start with a neutral nature and no
+          stat investment.
         </p>
       </div>
       <label>
@@ -298,7 +307,11 @@ export default function MatchupCalculator({
             setMessage("Choose a recognized species or form.");
             return;
           }
-          selectOpponent(newMember(species));
+          if (champions && !regMCIds.has(toID(species.name))) {
+            setMessage("This species is outside the REG M-C list.");
+            return;
+          }
+          selectOpponent(newMember(species, champions));
         }}
       >
         <label className="flex-1">
@@ -313,7 +326,11 @@ export default function MatchupCalculator({
       </form>
       <datalist id="matchup-species">
         {Object.values(dex)
-          .filter((species) => species.num > 0)
+          .filter(
+            (species) =>
+              species.num > 0 &&
+              (!champions || regMCIds.has(toID(species.name))),
+          )
           .map((species) => (
             <option value={species.name} key={species.name} />
           ))}
@@ -334,7 +351,7 @@ export default function MatchupCalculator({
           className="action mt-2"
           onClick={() => {
             try {
-              const members = importTeam(importText, dex);
+              const members = importTeam(importText, dex, champions);
               setImported(members);
               selectOpponent(members[0]);
             } catch (error) {
@@ -385,6 +402,7 @@ export default function MatchupCalculator({
               Level
               <input
                 type="number"
+                disabled={champions}
                 min={1}
                 max={100}
                 value={opponent.level}
@@ -435,17 +453,19 @@ export default function MatchupCalculator({
                 ))}
               </select>
             </label>
-            <label>
-              Tera type
-              <select
-                value={opponent.tera}
-                onChange={(e) => updateOpponent({ tera: e.target.value })}
-              >
-                {teraTypes.map((type) => (
-                  <option key={type}>{type}</option>
-                ))}
-              </select>
-            </label>
+            {!champions && (
+              <label>
+                Tera type
+                <select
+                  value={opponent.tera}
+                  onChange={(e) => updateOpponent({ tera: e.target.value })}
+                >
+                  {teraTypes.map((type) => (
+                    <option key={type}>{type}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             {opponent.moves.map((move, index) => (
@@ -465,74 +485,23 @@ export default function MatchupCalculator({
               </label>
             ))}
           </div>
-          <p className="muted mt-3">
-            EVs ·{" "}
-            {Object.values(opponent.evs).reduce((sum, value) => sum + value, 0)}
-            /510
-          </p>
-          <div className="mt-2 overflow-x-auto">
-            <table className="stat-table">
-              <thead>
-                <tr>
-                  <th>Stat</th>
-                  {statKeys.map((stat) => (
-                    <th key={stat}>{stat.toUpperCase()}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(["evs", "ivs"] as const).map((kind) => (
-                  <tr key={kind}>
-                    <th>{kind === "evs" ? "EV" : "IV"}</th>
-                    {statKeys.map((stat) => (
-                      <td key={stat}>
-                        <input
-                          type="number"
-                          min={0}
-                          max={kind === "evs" ? 252 : 31}
-                          aria-label={`Opponent ${stat} ${kind}`}
-                          value={opponent[kind][stat]}
-                          onChange={(e) => {
-                            const remaining =
-                              510 -
-                              Object.values(opponent.evs).reduce(
-                                (sum, value) => sum + value,
-                                0,
-                              ) +
-                              opponent.evs[stat];
-                            updateOpponent({
-                              [kind]: {
-                                ...opponent[kind],
-                                [stat]: Math.max(
-                                  0,
-                                  Math.min(
-                                    kind === "evs"
-                                      ? Math.min(252, remaining)
-                                      : 31,
-                                    Math.trunc(Number(e.target.value)),
-                                  ),
-                                ),
-                              },
-                            });
-                          }}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <StatEditor
+            member={opponent}
+            species={dex[toID(opponent.species)]}
+            onChange={updateOpponent}
+          />
         </details>
       )}
       <div className="grid gap-3 md:grid-cols-2">
         <ConditionsEditor
           label="Your battle state"
+          champions={champions}
           conditions={ownConditions}
           onChange={setOwnConditions}
         />
         <ConditionsEditor
           label="Opponent battle state"
+          champions={champions}
           conditions={opponentConditions}
           onChange={setOpponentConditions}
         />

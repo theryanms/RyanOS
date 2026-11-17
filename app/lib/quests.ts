@@ -23,11 +23,12 @@ export type Quest = {
   // These help RyanOS reroll a daily quest from the correct category.
   poolIndex?: number;
   templateIndex?: number;
+  statPool?: StatType;
 };
 
 export type QuestTemplate = Omit<
   Quest,
-  "id" | "completed" | "poolIndex" | "templateIndex"
+  "id" | "completed" | "poolIndex" | "templateIndex" | "statPool"
 >;
 
 export type StatTotals = Record<StatType, number>;
@@ -644,15 +645,75 @@ function hashText(text: string) {
   return hash;
 }
 
+export const dailyQuestCatalog: QuestTemplate[] = [
+  ...dailyQuestPools.flat(),
+  {
+    title: "Practice a strength movement",
+    description: "Spend 10 minutes practicing a comfortable strength exercise.",
+    xp: 15,
+    type: "STR",
+  },
+  {
+    title: "Take the stairs or a brisk walk",
+    description: "Move at a comfortable brisk pace for 10 minutes.",
+    xp: 15,
+    type: "STR",
+  },
+  {
+    title: "Carry out an active chore",
+    description: "Spend 15 minutes on a chore that gets your body moving.",
+    xp: 15,
+    type: "STR",
+  },
+  {
+    title: "Practice a coordination skill",
+    description:
+      "Spend 10 minutes practicing balance or hand-eye coordination.",
+    xp: 15,
+    type: "DEX",
+  },
+  {
+    title: "Practice a musical pattern",
+    description:
+      "Practice one rhythm, chord change, or instrument exercise for 10 minutes.",
+    xp: 15,
+    type: "DEX",
+  },
+  {
+    title: "Complete a gentle mobility routine",
+    description:
+      "Spend 10 minutes moving through comfortable ranges of motion.",
+    xp: 15,
+    type: "DEX",
+  },
+  {
+    title: "Give someone a thoughtful compliment",
+    description: "Tell someone one specific thing you appreciate about them.",
+    xp: 15,
+    type: "CHA",
+  },
+  {
+    title: "Practice explaining an idea",
+    description:
+      "Explain a useful idea aloud for five minutes, to a friend or to yourself.",
+    xp: 15,
+    type: "CHA",
+  },
+];
+
 export function createDailyQuests(dateKey: string): Quest[] {
-  return dailyQuestPools.map((pool, poolIndex) => {
-    const templateIndex = hashText(`${dateKey}-${poolIndex}`) % pool.length;
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const dayNumber = Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+  return (Object.keys(emptyStats) as StatType[]).map((stat) => {
+    const pool = dailyQuestCatalog.filter((quest) => quest.type === stat);
+    const templateIndex = (dayNumber + hashText(stat)) % pool.length;
 
     return {
       ...pool[templateIndex],
-      id: `daily-${dateKey}-${poolIndex}`,
+      id: `daily-${dateKey}-${stat}`,
+      xp: 15,
       completed: false,
-      poolIndex,
+      statPool: stat,
       templateIndex,
     };
   });
@@ -1098,7 +1159,9 @@ export function rerollDailyQuest(
 
   const poolIndex = currentQuest.poolIndex ?? questIndex;
 
-  const pool = dailyQuestPools[poolIndex];
+  const pool = currentQuest.statPool
+    ? dailyQuestCatalog.filter((quest) => quest.type === currentQuest.statPool)
+    : dailyQuestPools[poolIndex];
 
   if (!pool || pool.length <= 1) {
     return state;
@@ -1119,10 +1182,12 @@ export function rerollDailyQuest(
 
   const newQuest: Quest = {
     ...pool[newTemplateIndex],
-    id: `daily-${state.dailyDate}-${poolIndex}-rerolled`,
+    xp: currentQuest.statPool ? 15 : pool[newTemplateIndex].xp,
+    id: `daily-${state.dailyDate}-${currentQuest.statPool ?? poolIndex}-rerolled`,
     completed: false,
     poolIndex,
     templateIndex: newTemplateIndex,
+    ...(currentQuest.statPool ? { statPool: currentQuest.statPool } : {}),
   };
 
   const updatedDailyQuests = [...state.dailyQuests];

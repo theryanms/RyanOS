@@ -1,8 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { themes, visualizerModes, type Preferences } from "../lib/preferences";
-import { drawVisualizer } from "../lib/visualizer";
+import {
+  palettes,
+  visualizerModes,
+  type Preferences,
+} from "../lib/preferences";
+import { createVisualizerState, drawVisualizer } from "../lib/visualizer";
 
 export default function Visualizer({
   preferences,
@@ -24,6 +28,9 @@ export default function Visualizer({
   const request = useRef(0);
   const [source, setSource] = useState("");
   const [filename, setFilename] = useState("");
+  const [demo, setDemo] = useState(false);
+  const demoRef = useRef(false);
+  const stageRef = useRef<HTMLElement>(null);
   const [message, setMessage] = useState(
     "Choose an audio file or enable your microphone to begin.",
   );
@@ -36,7 +43,7 @@ export default function Visualizer({
     if (!engine.current) {
       const context = new AudioContext();
       const analyser = context.createAnalyser();
-      analyser.fftSize = 256;
+      analyser.fftSize = 512;
       analyser.smoothingTimeConstant = 0.7;
       engine.current = { context, analyser };
     }
@@ -127,8 +134,10 @@ export default function Visualizer({
     let pulse = 0;
     let average = 0;
     let lastBeat = 0;
-    const bins = new Uint8Array(128);
-    const waveform = new Uint8Array(256);
+    let disabledDrawn = false;
+    const bins = new Uint8Array(256);
+    const waveform = new Uint8Array(512);
+    const animation = createVisualizerState();
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     function draw(time: number) {
       if (!canvas || !ctx) return;
@@ -141,14 +150,43 @@ export default function Visualizer({
       ) {
         canvas.width = Math.round(width * ratio);
         canvas.height = Math.round(height * ratio);
+        disabledDrawn = false;
       }
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      if (!settings.current.effectsEnabled && disabledDrawn) {
+        frame = requestAnimationFrame(draw);
+        return;
+      }
+      disabledDrawn = !settings.current.effectsEnabled;
       const current = engine.current;
       bins.fill(0);
       waveform.fill(128);
       if (current) {
         current.analyser.getByteFrequencyData(bins);
         current.analyser.getByteTimeDomainData(waveform);
+      }
+      if (demoRef.current) {
+        for (let index = 0; index < bins.length; index++)
+          bins[index] = Math.max(
+            0,
+            Math.min(
+              255,
+              (Math.sin(time / 220 + index * 0.1) * 0.5 + 0.5) *
+                190 *
+                Math.exp(-index / 160) +
+                Math.pow(Math.sin(time / 330), 8) * 55,
+            ),
+          );
+        for (let index = 0; index < waveform.length; index++)
+          waveform[index] =
+            128 +
+            Math.sin(index / 12 + time / 150) *
+              (25 + Math.pow(Math.sin(time / 330), 8) * 75);
+      }
+      if (!settings.current.effectsEnabled) {
+        bins.fill(0);
+        waveform.fill(128);
+        pulse = 0;
       }
       const bass = bins.slice(1, 12).reduce((a, b) => a + b, 0) / (11 * 255);
       average = average * 0.94 + bass * 0.06;
@@ -164,10 +202,16 @@ export default function Visualizer({
         waveform,
         pulse,
         time,
-        reducedMotion: reduced.matches,
-        hue: themes[settings.current.theme].hue,
+        reducedMotion:
+          reduced.matches ||
+          settings.current.reducedMotion ||
+          !settings.current.effectsEnabled,
+        hue: 0,
         sensitivity: settings.current.sensitivity,
         mode: settings.current.visualizer,
+        palette: settings.current.palette,
+        intensity: settings.current.intensity,
+        state: animation,
       });
       frame = requestAnimationFrame(draw);
     }
@@ -184,13 +228,63 @@ export default function Visualizer({
     };
   }, []);
   return (
-    <section className="panel space-y-5">
+    <section ref={stageRef} className="panel visualizer-stage space-y-5">
       <div>
         <h2>Music Visualizer</h2>
         <p className="muted">
           Choose a style. Switch while your music keeps playing.
         </p>
       </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="min-w-40 flex-1">
+          Palette
+          <select
+            value={preferences.palette}
+            onChange={(e) =>
+              onChange({
+                ...preferences,
+                palette: e.target.value as Preferences["palette"],
+              })
+            }
+          >
+            {Object.entries(palettes).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="action"
+          aria-pressed={demo}
+          onClick={() => {
+            demoRef.current = !demo;
+            setDemo(!demo);
+          }}
+        >
+          {demo ? "Stop demo" : "Preview with demo audio"}
+        </button>
+        <button
+          className="action"
+          onClick={() => {
+            const stage = stageRef.current;
+            if (document.fullscreenElement) void document.exitFullscreen();
+            else if (stage?.requestFullscreen)
+              void stage
+                .requestFullscreen()
+                .catch(() =>
+                  setMessage("Full screen is unavailable in this browser."),
+                );
+          }}
+        >
+          Full screen
+        </button>
+      </div>
+      {demo && (
+        <p className="notice">
+          Demo signal active. Disable demo to watch your audio input.
+        </p>
+      )}
       <div
         className="flex flex-wrap gap-2"
         role="group"
@@ -214,7 +308,7 @@ export default function Visualizer({
       </div>
       <canvas
         ref={canvasRef}
-        className="h-80 w-full rounded-2xl border border-cyan-300/20"
+        className="visualizer-canvas w-full rounded-2xl border border-cyan-300/20"
         aria-label={`${visualizerModes[preferences.visualizer]} audio-reactive visualization`}
       />
       <div className="grid gap-4 sm:grid-cols-2">

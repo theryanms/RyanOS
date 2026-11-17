@@ -20,7 +20,12 @@ export default function ThemePicker({
           aria-pressed={preferences.theme === id}
           key={id}
           onClick={() =>
-            onChange({ ...preferences, theme: id as Preferences["theme"] })
+            onChange({
+              ...preferences,
+              theme: id as Preferences["theme"],
+              customAccent: null,
+              customBackground: null,
+            })
           }
         >
           <span

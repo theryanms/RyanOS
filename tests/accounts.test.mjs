@@ -12,6 +12,7 @@ load.extensions[".ts"] = (module, filename) => {
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
         target: ts.ScriptTarget.ES2020,
+        esModuleInterop: true,
       },
     }).outputText,
     filename,
@@ -63,12 +64,16 @@ const { hashPassword, verifyPassword, normalizeUsername } = load(
   "../app/lib/server/passwords.ts",
 );
 const originalDatabaseURL = process.env.DATABASE_URL;
+const originalMailKey = process.env.RESEND_API_KEY;
+delete process.env.RESEND_API_KEY;
 delete process.env.DATABASE_URL;
 
 after(async () => {
   Module._load = originalLoader;
   if (originalDatabaseURL === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = originalDatabaseURL;
+  if (originalMailKey === undefined) delete process.env.RESEND_API_KEY;
+  else process.env.RESEND_API_KEY = originalMailKey;
   await database.close();
 });
 
@@ -405,4 +410,124 @@ test("login rate limiting persists across requests", async () => {
       }),
     );
   assert.equal(response.status, 429);
+});
+
+test("reports are durable, retry-safe, and restricted to explicitly configured admins", async () => {
+  const reports = load("../app/api/reports/route.ts");
+  const created = await route.POST(
+    request("POST", {
+      action: "signup",
+      username: "admin_owner",
+      password: "a-strong-test-password",
+      snapshot,
+    }),
+  );
+  assert.equal(created.status, 200);
+  const cookie = cookieFrom(created);
+  const previousAdmins = process.env.ADMIN_USERNAMES;
+  process.env.ADMIN_USERNAMES = "admin_owner";
+  try {
+    const payload = {
+      requestId: "12345678-1234-1234-1234-123456789abc",
+      category: "bug",
+      message: "The visualizer stopped after switching an audio source.",
+    };
+    const sent = await reports.POST(request("POST", payload));
+    assert.equal(sent.status, 200);
+    const retry = await reports.POST(request("POST", payload));
+    assert.equal(retry.status, 200);
+    assert.equal(
+      (
+        await database.query(
+          "SELECT count(*)::integer AS count FROM ryanos_reports",
+        )
+      ).rows[0].count,
+      1,
+    );
+    const guestInbox = await reports.GET(request("GET"));
+    assert.deepEqual(await guestInbox.json(), { admin: false, reports: [] });
+    const inbox = await reports.GET(request("GET", undefined, cookie));
+    const data = await inbox.json();
+    assert.equal(data.admin, true);
+    assert.equal(data.reports.length, 1);
+    assert.equal(
+      (
+        await reports.PATCH(
+          request("PATCH", { id: payload.requestId, status: "resolved" }),
+        )
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await reports.PATCH(
+          request(
+            "PATCH",
+            { id: payload.requestId, status: "resolved" },
+            cookie,
+          ),
+        )
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await (await route.GET(request("GET", undefined, cookie))).json())
+        .account.snapshot.progress.lifetimeXP,
+      0,
+    );
+    assert.equal(
+      (
+        await reports.POST(
+          request("POST", {
+            ...payload,
+            requestId: undefined,
+            message: "tiny",
+          }),
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await reports.POST(
+          request("POST", payload, "", "https://other.example"),
+        )
+      ).status,
+      403,
+    );
+    const originalFetch = globalThis.fetch;
+    const oldTo = process.env.REPORT_EMAIL_TO;
+    const oldFrom = process.env.REPORT_EMAIL_FROM;
+    try {
+      process.env.RESEND_API_KEY = "test-key";
+      process.env.REPORT_EMAIL_TO = "owner@example.test";
+      process.env.REPORT_EMAIL_FROM = "app@example.test";
+      globalThis.fetch = async () => {
+        throw Error("Simulated email outage");
+      };
+      const saved = await reports.POST(
+        request("POST", { ...payload, requestId: undefined }),
+      );
+      assert.equal(saved.status, 200);
+      assert.equal((await saved.json()).notification, "failed");
+      assert.equal(
+        (
+          await database.query(
+            "SELECT count(*)::integer AS count FROM ryanos_reports",
+          )
+        ).rows[0].count,
+        2,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      delete process.env.RESEND_API_KEY;
+      if (oldTo === undefined) delete process.env.REPORT_EMAIL_TO;
+      else process.env.REPORT_EMAIL_TO = oldTo;
+      if (oldFrom === undefined) delete process.env.REPORT_EMAIL_FROM;
+      else process.env.REPORT_EMAIL_FROM = oldFrom;
+    }
+  } finally {
+    if (previousAdmins === undefined) delete process.env.ADMIN_USERNAMES;
+    else process.env.ADMIN_USERNAMES = previousAdmins;
+  }
 });

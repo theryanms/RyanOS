@@ -258,3 +258,194 @@ nav[aria-label="Modules"] button[aria-pressed="true"] {
 .app-shell :focus-visible {
   outline-color: var(--accent);
 }
+
+/* Readable light palettes and the denser trainer workspace. */
+.app-shell {
+  color: var(--foreground);
+}
+.app-shell[data-theme="terminal"] .theme-ambient {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    #39ff1405 3px 4px
+  );
+}
+.app-shell[data-theme="synthwave"] .theme-ambient {
+  background-image:
+    linear-gradient(#ff61d809 1px, transparent 1px),
+    linear-gradient(90deg, #38bdf809 1px, transparent 1px),
+    radial-gradient(ellipse at top, #a21caf35, transparent 65%);
+  background-size:
+    48px 48px,
+    48px 48px,
+    auto;
+}
+.app-shell[data-appearance="light"] {
+  color: #172033;
+}
+.app-shell[data-appearance="light"]
+  :is(.text-zinc-100, .text-zinc-200, .text-zinc-300) {
+  color: #172033;
+}
+.app-shell[data-appearance="light"]
+  :is(.text-zinc-400, .text-zinc-500, .text-zinc-600, .muted) {
+  color: #5c6577;
+}
+.app-shell[data-appearance="light"] [class*="bg-black/"] {
+  background-color: #ffffff90;
+}
+.app-shell[data-appearance="light"] [class*="border-white/"] {
+  border-color: #17203325;
+}
+.app-shell[data-appearance="light"]
+  :is(input, select, textarea, .action, .tab, label, .matchup-table th) {
+  color: #172033;
+  border-color: #17203330;
+}
+.app-shell[data-appearance="light"]
+  :is(.text-emerald-200, .text-emerald-300, .text-green-300) {
+  color: #047857;
+}
+.app-shell[data-appearance="light"]
+  :is(.text-cyan-200, .text-cyan-300, .text-blue-300) {
+  color: #075985;
+}
+.app-shell[data-appearance="light"] :is(.text-lime-300, .text-lime-200) {
+  color: #4d7c0f;
+}
+.app-shell[data-appearance="light"] :is(.text-fuchsia-300, .text-rose-300) {
+  color: #a21caf;
+}
+.app-shell[data-appearance="light"]
+  :is(.text-amber-100, .text-amber-200, .text-orange-300) {
+  color: #92400e;
+}
+.app-shell[data-appearance="light"] .notice {
+  color: #164e63;
+  background: #cffafe70;
+  border-color: #0891b250;
+}
+.app-shell[data-appearance="light"] .tab.selected {
+  color: #172033;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.app-shell input[type="color"] {
+  height: 3rem;
+  padding: 0.3rem !important;
+  cursor: pointer;
+}
+.account-bar {
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+}
+.pokemon-card {
+  border-top: 3px solid var(--accent);
+  box-shadow: 0 8px 30px #00000015;
+}
+.pokemon-card > .section-heading {
+  border-bottom: 1px solid #ffffff20;
+  padding-bottom: 1rem;
+}
+.pokemon-card fieldset {
+  border-top: 1px solid #ffffff20;
+  padding-top: 1rem;
+}
+.stat-editor legend {
+  font-weight: 700;
+  padding-right: 0.5rem;
+}
+.stats-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 0.8rem;
+}
+.stats-grid th,
+.stats-grid td {
+  border-bottom: 1px solid #94a3b830;
+  padding: 0.6rem;
+  text-align: center;
+}
+.stats-grid thead th {
+  background: var(--input);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+}
+.stats-grid tbody th {
+  text-align: left;
+  white-space: nowrap;
+  border-left: 3px solid #94a3b8;
+}
+.stats-grid tr[data-stat="hp"] th {
+  border-left-color: #34d399;
+}
+.stats-grid tr[data-stat="atk"] th {
+  border-left-color: #fb7185;
+}
+.stats-grid tr[data-stat="def"] th {
+  border-left-color: #fbbf24;
+}
+.stats-grid tr[data-stat="spa"] th {
+  border-left-color: #60a5fa;
+}
+.stats-grid tr[data-stat="spd"] th {
+  border-left-color: #a78bfa;
+}
+.stats-grid tr[data-stat="spe"] th {
+  border-left-color: #22d3ee;
+}
+.stats-grid tr:nth-child(even) {
+  background: #94a3b808;
+}
+.stats-grid input {
+  min-width: 3.2rem !important;
+  padding: 0.4rem !important;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.final-stat {
+  font-size: 1rem;
+  font-weight: 800;
+  background: var(--accent-soft);
+  border-left: 1px solid #94a3b830;
+  font-variant-numeric: tabular-nums;
+}
+.matchup-table th,
+.matchup-table td {
+  border-right: 1px solid #94a3b820;
+  padding: 0.7rem;
+}
+.matchup-table tbody tr:nth-child(even) {
+  background: #94a3b808;
+}
+.report-card {
+  border: 1px solid #94a3b840;
+  border-radius: 0.8rem;
+  padding: 1rem;
+}
+.visualizer-canvas {
+  height: clamp(340px, 50vw, 600px);
+  background: #050711;
+}
+.visualizer-stage:fullscreen {
+  background: #050711;
+  overflow: auto;
+  padding: 1.5rem;
+}
+.visualizer-stage:fullscreen .visualizer-canvas {
+  height: 65vh;
+}
+@media (max-width: 480px) {
+  .stats-grid th,
+  .stats-grid td {
+    padding: 0.5rem 0.25rem;
+  }
+  .account-bar summary .muted {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.4rem;
+  }
+}

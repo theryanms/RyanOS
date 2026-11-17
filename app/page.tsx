@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import ModuleCard from "./components/ModuleCard";
 import QuestCard from "./components/QuestCard";
 import StatsPanel from "./components/StatsPanel";
@@ -9,17 +15,21 @@ import TrainerHub from "./components/TrainerHub";
 import Visualizer from "./components/Visualizer";
 import TerminalPanel from "./components/TerminalPanel";
 import QuestOptions from "./components/QuestOptions";
-import ThemePicker from "./components/ThemePicker";
+import SettingsPanel from "./components/SettingsPanel";
+import ReportsPanel from "./components/ReportsPanel";
+import { APP_VERSION, syncRequestEvent } from "./lib/diagnostics";
 import AccountPanel from "./components/AccountPanel";
 import {
   defaultPreferences,
   notifyLocalChange,
   parsePreferences,
   preferencesKey,
+  themeAppearance,
   type Preferences,
 } from "./lib/preferences";
 import {
   parseSnapshot,
+  readLocalSnapshot,
   writeLocalSnapshot,
   type SaveSnapshot,
 } from "./lib/snapshot";
@@ -83,13 +93,22 @@ const modules = [
     accent: "from-green-400 to-teal-300",
     symbol: ">_",
   },
+  {
+    name: "Settings",
+    subtitle: "Appearance + Preferences",
+    status: "Customize",
+    accent: "from-slate-300 to-indigo-300",
+    symbol: "⚙",
+  },
 ];
+const moduleIds = ["quests", "trainer", "visualizer", "terminal", "settings"];
 
 export default function Home() {
   const [activeModule, setActiveModule] = useState("quests");
   const [storageMessage, setStorageMessage] = useState("");
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [trainerEpoch, setTrainerEpoch] = useState(0);
+  const [reportOpen, setReportOpen] = useState(false);
   const progressReadFailed = useRef(false);
   const [appState, setAppState] = useState<RyanOSState>(emptyState);
 
@@ -130,6 +149,17 @@ export default function Home() {
       );
     } finally {
       setHasLoadedSavedData(true);
+    }
+    if (new URLSearchParams(window.location.search).has("safe")) {
+      setPreferences((current) => ({
+        ...current,
+        reducedMotion: true,
+        effectsEnabled: false,
+      }));
+      setActiveModule("terminal");
+      setStorageMessage(
+        "Safe mode is active. Animated effects are disabled for this visit.",
+      );
     }
   }, []);
 
@@ -303,7 +333,9 @@ export default function Home() {
         return {
           ...t,
           id: crypto.randomUUID(),
-          members: t.members.length ? importTeam(exportTeam(t), dex) : [],
+          members: t.members.length
+            ? importTeam(exportTeam(t), dex, t.ruleset === "reg-m-c")
+            : [],
         };
       });
       if (
@@ -325,6 +357,37 @@ export default function Home() {
   }
 
   function runAppCommand(command: string, argument: string) {
+    if (command === "safe") {
+      changePreferences({
+        ...preferences,
+        reducedMotion: true,
+        effectsEnabled: false,
+      });
+      setActiveModule("terminal");
+      return "Safe mode enabled. Audio visualization stopped. Re-enable effects in Settings.";
+    }
+    if (command === "sync") {
+      window.dispatchEvent(new Event(syncRequestEvent));
+      return "Sync requested. Check the account status at the top of the page.";
+    }
+    if (command === "repair") {
+      const snapshot = readLocalSnapshot();
+      applySnapshot({
+        ...snapshot,
+        preferences,
+        progress: refreshQuestPeriods(migrateState(snapshot.progress)),
+      });
+      return "Save data validated and quest periods refreshed. XP and teams preserved.";
+    }
+    if (command === "reload") {
+      window.location.reload();
+      return "Reloading RyanOS…";
+    }
+    if (command === "report") {
+      setReportOpen(true);
+      setActiveModule("settings");
+      return "Opened the report form in Settings.";
+    }
     const numbered = [
       ...appState.dailyQuests.map((q) => ({
         quest: q,
@@ -382,8 +445,10 @@ export default function Home() {
       return `${focus} weekly quests selected.`;
     }
     if (command === "open") {
-      if (!["quests", "trainer", "visualizer", "terminal"].includes(argument))
-        throw Error("Choose quests, trainer, visualizer, or terminal.");
+      if (!moduleIds.includes(argument))
+        throw Error(
+          "Choose quests, trainer, visualizer, terminal, or settings.",
+        );
       setActiveModule(argument);
       return `Opened ${argument}.`;
     }
@@ -406,14 +471,52 @@ export default function Home() {
     }));
   }
 
+  const appearance = themeAppearance(preferences);
   return (
     <main
       data-theme={preferences.theme}
+      data-appearance={appearance.light ? "light" : "dark"}
+      style={
+        {
+          "--background": appearance.background,
+          "--accent": appearance.accent,
+          "--accent-soft": `${appearance.accent}22`,
+          "--glow": `${appearance.accent}22`,
+          "--panel": `color-mix(in srgb, ${appearance.background} ${appearance.light ? "92%" : "85%"}, ${appearance.light ? "white" : "#263449"})`,
+          "--input": `color-mix(in srgb, ${appearance.background} 90%, ${appearance.light ? "white" : "black"})`,
+          "--foreground": appearance.light ? "#172033" : "#f4f4f5",
+          colorScheme: appearance.light ? "light" : "dark",
+          fontFamily:
+            preferences.theme === "terminal"
+              ? "var(--font-geist-mono)"
+              : preferences.theme === "paper"
+                ? "Georgia, serif"
+                : undefined,
+        } as CSSProperties
+      }
       className="app-shell min-h-screen overflow-hidden text-zinc-100"
     >
       <div className="theme-ambient pointer-events-none fixed inset-0" />
 
       <section className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6">
+        {hasLoadedSavedData && <AccountPanel onApply={applySnapshot} />}
+        <div className="mb-4 flex flex-wrap justify-end gap-2">
+          <button
+            className="action"
+            onClick={() => setActiveModule("settings")}
+          >
+            Settings
+          </button>
+          <button
+            className="action"
+            onClick={() => {
+              setReportOpen(true);
+              setActiveModule("settings");
+            }}
+          >
+            Report an issue
+          </button>
+        </div>
         <header className="app-header mb-6 rounded-3xl border p-5 shadow-2xl">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -440,43 +543,28 @@ export default function Home() {
           </div>
 
           <XPBar currentXP={xpIntoLevel} nextLevelXP={xpNeededThisLevel} />
-          <div className="mt-5 border-t border-white/10 pt-4">
-            <ThemePicker
-              preferences={preferences}
-              onChange={changePreferences}
-            />
-          </div>
         </header>
-
-        {hasLoadedSavedData && <AccountPanel onApply={applySnapshot} />}
 
         <section className="mb-5">
           <div className="mb-3 flex items-end justify-between">
             <h2 className="text-lg font-black">Active Modules</h2>
 
             <p className="text-xs uppercase tracking-widest text-zinc-500">
-              v1.0
+              v{APP_VERSION}
             </p>
           </div>
 
           <nav
             aria-label="Modules"
-            className="grid grid-cols-2 gap-3 md:grid-cols-4"
+            className="grid grid-cols-2 gap-3 md:grid-cols-5"
           >
             {modules.map((item, index) => (
               <button
                 type="button"
-                aria-pressed={
-                  activeModule ===
-                  ["quests", "trainer", "visualizer", "terminal"][index]
-                }
-                className={`rounded-3xl text-left transition hover:bg-white/5 ${activeModule === ["quests", "trainer", "visualizer", "terminal"][index] ? "ring-2 ring-emerald-300/60" : ""}`}
+                aria-pressed={activeModule === moduleIds[index]}
+                className={`rounded-3xl text-left transition hover:bg-white/5 ${activeModule === moduleIds[index] ? "ring-2 ring-emerald-300/60" : ""}`}
                 key={item.name}
-                onClick={() =>
-                  setActiveModule(
-                    ["quests", "trainer", "visualizer", "terminal"][index],
-                  )
-                }
+                onClick={() => setActiveModule(moduleIds[index])}
               >
                 <ModuleCard
                   key={item.name}
@@ -498,19 +586,23 @@ export default function Home() {
         )}
         {!hasLoadedSavedData && <p role="status">Loading your progress…</p>}
         <div hidden={activeModule !== "quests" || !hasLoadedSavedData}>
-          <QuestOptions
-            state={appState}
-            onChange={(update) =>
-              setAppState((s) => update(refreshQuestPeriods(s)))
-            }
-          />
+          {preferences.showQuestLibrary && (
+            <QuestOptions
+              state={appState}
+              onChange={(update) =>
+                setAppState((s) => update(refreshQuestPeriods(s)))
+              }
+            />
+          )}
 
-          <StatsPanel
-            stats={appState.stats}
-            dailyStreak={appState.dailyStreak}
-            weeklyStreak={appState.weeklyStreak}
-            dailyRerollsRemaining={appState.dailyRerollsRemaining}
-          />
+          {preferences.showStats && (
+            <StatsPanel
+              stats={appState.stats}
+              dailyStreak={appState.dailyStreak}
+              weeklyStreak={appState.weeklyStreak}
+              dailyRerollsRemaining={appState.dailyRerollsRemaining}
+            />
+          )}
 
           <section className="mb-5 rounded-3xl border border-lime-300/20 bg-lime-300/5 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -640,50 +732,54 @@ export default function Home() {
             )}
           </section>
 
-          <section className="mb-5 rounded-3xl border border-blue-300/20 bg-blue-300/4 p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="font-black">Recent Activity</h2>
+          {preferences.showActivity && (
+            <section className="mb-5 rounded-3xl border border-blue-300/20 bg-blue-300/4 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="font-black">Recent Activity</h2>
 
-                <p className="text-xs text-blue-300">Latest completed quests</p>
+                  <p className="text-xs text-blue-300">
+                    Latest completed quests
+                  </p>
+                </div>
+
+                <span className="rounded-xl bg-blue-300/10 px-2 py-1 text-xs font-bold text-blue-300">
+                  {appState.questHistory.length}
+                </span>
               </div>
 
-              <span className="rounded-xl bg-blue-300/10 px-2 py-1 text-xs font-bold text-blue-300">
-                {appState.questHistory.length}
-              </span>
-            </div>
+              {recentHistory.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-center">
+                  <p className="text-sm text-zinc-500">
+                    Complete a quest to begin your activity log.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {recentHistory.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-zinc-200">
+                          {entry.title}
+                        </p>
 
-            {recentHistory.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-center">
-                <p className="text-sm text-zinc-500">
-                  Complete a quest to begin your activity log.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {recentHistory.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 p-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-zinc-200">
-                        {entry.title}
-                      </p>
+                        <p className="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">
+                          {entry.type} · {entry.period}
+                        </p>
+                      </div>
 
-                      <p className="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">
-                        {entry.type} · {entry.period}
-                      </p>
+                      <span className="shrink-0 text-sm font-black text-blue-300">
+                        +{entry.xp} XP
+                      </span>
                     </div>
-
-                    <span className="shrink-0 text-sm font-black text-blue-300">
-                      +{entry.xp} XP
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
         </div>
         <div hidden={activeModule !== "trainer"}>
           <TrainerHub key={trainerEpoch} />
@@ -694,6 +790,15 @@ export default function Home() {
         <div hidden={activeModule !== "terminal"}>
           <TerminalPanel runAppCommand={runAppCommand} />
         </div>
+        {activeModule === "settings" && (
+          <div className="space-y-5">
+            <SettingsPanel
+              preferences={preferences}
+              onChange={changePreferences}
+            />
+            <ReportsPanel startOpen={reportOpen} />
+          </div>
+        )}
         <footer className="mt-6 flex flex-wrap items-center gap-3 border-t border-white/10 py-4 text-xs text-zinc-400">
           <span className="mr-auto">RyanOS · Device saves + account sync</span>
           <button

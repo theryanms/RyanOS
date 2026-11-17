@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  APP_VERSION,
+  doctor,
+  recentErrors,
+  storageSummary,
+} from "../lib/diagnostics";
+import {
   addDays,
   calculate,
   convertTimezone,
@@ -101,6 +107,23 @@ convert 10 km to mi
 convert 72 f to c
 
 Use Up / Down arrows for command history.`;
+          result +=
+            "\n\nRecovery\ndoctor       Check device saves, storage, and server\nlogs         Recent app errors\nstorage      Device save sizes\nversion      App version\nsafe         Stop visual effects and open the terminal\nsync         Retry account sync\nrepair       Validate and refresh readable saved data\nreload       Reload RyanOS\nreport       Open the report form\nopen settings\n\nMore command ideas: countdowns, saved notes, reminders, dice rolls, and a searchable command palette.\nIf the page is fully frozen, reopen /?safe=1.";
+          break;
+        case "doctor":
+          result = await doctor();
+          break;
+        case "logs":
+          result =
+            recentErrors()
+              .map((entry) => `${entry.time} ${entry.message}`)
+              .join("\n") || "No errors recorded in this session.";
+          break;
+        case "storage":
+          result = storageSummary();
+          break;
+        case "version":
+          result = `RyanOS ${APP_VERSION}`;
           break;
         case "calc":
           result = String(calculate(argument));
@@ -254,6 +277,9 @@ Use Up / Down arrows for command history.`;
       <div className="flex flex-wrap gap-2">
         {[
           "help",
+          "doctor",
+          "safe",
+          "report",
           "stats",
           "days 2026-12-25",
           "tz now Tokyo",

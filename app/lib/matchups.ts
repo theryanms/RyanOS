@@ -32,10 +32,23 @@ export type DamageRow = {
   error?: boolean;
 };
 
-function combatant(member: Member, conditions: BattleConditions) {
-  const generation = Generations.get(9);
+function combatant(
+  member: Member,
+  conditions: BattleConditions,
+  champions: boolean,
+) {
+  const generation = Generations.get(champions ? 0 : 9);
+  if (
+    champions &&
+    (member.statSystem !== "sp" ||
+      Object.values(member.evs).some((value) => value > 32) ||
+      Object.values(member.evs).reduce((a, b) => a + b, 0) > 66)
+  )
+    throw Error(
+      "Choose a Champions stat-point spread before calculating this matchup.",
+    );
   if (!generation.species.get(toID(member.species)))
-    throw Error(`${member.species} is unavailable in the Gen 9 calculator.`);
+    throw Error(`${member.species} is unavailable in the ${champions ? "Champions" : "Gen 9"} calculator.`);
   if (member.item && !generation.items.get(toID(member.item)))
     throw Error(`Unknown item “${member.item}” on ${member.species}.`);
   if (member.ability && !generation.abilities.get(toID(member.ability)))
@@ -55,7 +68,7 @@ function combatant(member: Member, conditions: BattleConditions) {
         ? member.gender
         : undefined,
   };
-  if (conditions.teraActive) {
+  if (conditions.teraActive && !champions) {
     const type = generation.types.get(toID(member.tera));
     if (!type) throw Error(`Unknown Tera type “${member.tera}”.`);
     options.teraType = type.name;
@@ -75,7 +88,8 @@ export function damageMatchup(
   defendingConditions = defaultConditions,
   field: Partial<State.Field> = {},
 ): DamageRow[] {
-  const generation = Generations.get(9);
+  const champions = attacker.statSystem === "sp";
+  const generation = Generations.get(champions ? 0 : 9);
   return attacker.moves.filter(Boolean).map((name) => {
     try {
       const moveData = generation.moves.get(toID(name));
@@ -83,8 +97,16 @@ export function damageMatchup(
         throw Error(`Unknown move “${name}”. Check the move name in the set.`);
       if (moveData.category === "Status")
         return { move: name, detail: "Status move. No direct damage range." };
-      const attackingPokemon = combatant(attacker, attackingConditions);
-      const defendingPokemon = combatant(defender, defendingConditions);
+      const attackingPokemon = combatant(
+        attacker,
+        attackingConditions,
+        champions,
+      );
+      const defendingPokemon = combatant(
+        defender,
+        defendingConditions,
+        champions,
+      );
       const move = new Move(generation, moveData.name, {
         ability: attacker.ability,
         item: attacker.item,

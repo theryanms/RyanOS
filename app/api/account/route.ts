@@ -9,6 +9,8 @@ import {
 } from "../../lib/server/passwords";
 import { parseSnapshot, type CloudSave } from "../../lib/snapshot";
 
+import { currentAccount } from "../../lib/server/session";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const cookieName = "ryanos-session";
@@ -37,15 +39,6 @@ function record(row: Record<string, unknown>): CloudSave {
     updatedAt: new Date(String(row.updated_at)).toISOString(),
     snapshot: parseSnapshot(row.save_data),
   };
-}
-
-async function currentAccount(request: NextRequest) {
-  const token = request.cookies.get(cookieName)?.value;
-  if (!token || !/^[a-f0-9]{64}$/.test(token)) return null;
-  const sql = await database();
-  const [account] =
-    await sql`SELECT a.* FROM ryanos_accounts a JOIN ryanos_sessions s ON s.account_id = a.id WHERE s.token_hash = ${tokenHash(token)} AND s.expires_at > now()`;
-  return account ?? null;
 }
 
 function assertOrigin(request: NextRequest) {

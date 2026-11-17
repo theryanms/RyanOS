@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { downloadFile } from "../lib/files";
 import { localChangeEvent } from "../lib/preferences";
+import { syncRequestEvent } from "../lib/diagnostics";
 import {
   parseSnapshot,
   readLocalSnapshot,
@@ -41,6 +42,8 @@ export default function AccountPanel({
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
+  const [welcome, setWelcome] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const cloud = useRef<CloudSave | null>(null);
   const baseline = useRef("");
   const blocked = useRef(true);
@@ -62,6 +65,7 @@ export default function AccountPanel({
       }),
     );
     setAccount(record);
+    setWelcome(false);
   }
 
   const acceptCloud = useCallback(
@@ -176,6 +180,13 @@ export default function AccountPanel({
           blocked.current = true;
           cloud.current = null;
           setAccount(null);
+          if (
+            data.configured &&
+            localStorage.getItem("ryanos-guest-mode") !== "1"
+          ) {
+            setWelcome(true);
+            setExpanded(true);
+          }
           setStatus(
             data.configured
               ? "Sign in to save across devices."
@@ -233,12 +244,17 @@ export default function AccountPanel({
       if (document.visibilityState === "hidden") void syncAction.current();
       else void refresh();
     }
+    function syncRequested() {
+      void syncAction.current();
+      void refresh();
+    }
     void refresh();
     const interval = setInterval(() => {
       if (!blocked.current && cloud.current) void syncAction.current();
       void refresh();
     }, 30000);
     window.addEventListener(localChangeEvent, changed);
+    window.addEventListener(syncRequestEvent, syncRequested);
     window.addEventListener("online", refresh);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", visibilityChanged);
@@ -247,6 +263,7 @@ export default function AccountPanel({
       clearInterval(interval);
       if (syncTimer.current) clearTimeout(syncTimer.current);
       window.removeEventListener(localChangeEvent, changed);
+      window.removeEventListener(syncRequestEvent, syncRequested);
       window.removeEventListener("online", refresh);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", visibilityChanged);
@@ -316,6 +333,7 @@ export default function AccountPanel({
       cloud.current = null;
       blocked.current = true;
       setAccount(null);
+      localStorage.setItem("ryanos-guest-mode", "1");
       setConflict(null);
       setStatus("Signed out. Your device copy is kept.");
     } catch (error) {
@@ -327,7 +345,11 @@ export default function AccountPanel({
   }
 
   return (
-    <details className="panel mb-5" open={Boolean(conflict)}>
+    <details
+      className="panel account-bar mb-4"
+      open={expanded || Boolean(conflict)}
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
       <summary className="cursor-pointer font-bold">
         {account ? `Account · ${account.username}` : "Account & cloud saves"}
         <span className="muted ml-3">{status}</span>
@@ -335,6 +357,25 @@ export default function AccountPanel({
       <p className="mt-3 text-sm" role="status">
         {status}
       </p>
+      {!account && (
+        <div className="my-4 flex flex-wrap items-center gap-3">
+          <p className="muted">
+            {welcome
+              ? "Welcome to RyanOS. Sign in for cross-device saves, or continue with a device save."
+              : "Guest progress saves in this browser."}
+          </p>
+          <button
+            className="action"
+            onClick={() => {
+              localStorage.setItem("ryanos-guest-mode", "1");
+              setWelcome(false);
+              setExpanded(false);
+            }}
+          >
+            Continue as guest · stop this prompt
+          </button>
+        </div>
+      )}
       {account ? (
         <>
           <p className="muted mt-2">

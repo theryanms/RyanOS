@@ -3,13 +3,11 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  battleStats,
   effectiveness,
   exportTeam,
   importTeam,
   natures,
   newMember,
-  statKeys,
   teamStorageKey,
   teamSuggestions,
   parseTeams,
@@ -23,6 +21,13 @@ import {
 } from "../lib/trainer";
 import { downloadFile } from "../lib/files";
 import { notifyLocalChange } from "../lib/preferences";
+import StatEditor from "./StatEditor";
+import {
+  changeStatSystem,
+  isRegMC,
+  regMCIds,
+  rulesetIssues,
+} from "../lib/rulesets";
 
 const MatchupCalculator = dynamic(() => import("./MatchupCalculator"), {
   loading: () => (
@@ -106,9 +111,16 @@ export default function TrainerHub() {
   }, [teams, loaded]);
 
   const team = teams.find((t) => t.id === selected);
+  const champions = team ? isRegMC(team) : false;
+  const legalityIssues = team ? rulesetIssues(team, dex) : [];
   const suggestions = team ? teamSuggestions(team, dex) : [];
   const matches = Object.values(dex)
-    .filter((p) => p.num > 0 && toID(p.name).includes(toID(search)))
+    .filter(
+      (p) =>
+        p.num > 0 &&
+        (!champions || regMCIds.has(toID(p.name))) &&
+        toID(p.name).includes(toID(search)),
+    )
     .slice(0, 30);
   function updateTeam(update: Partial<Team>) {
     setTeams((current) =>
@@ -204,7 +216,30 @@ export default function TrainerHub() {
                 />
               </label>
               <label>
-                League / format
+                Ruleset
+                <select
+                  value={team.ruleset ?? "custom"}
+                  onChange={(event) => {
+                    const next = event.target.value === "reg-m-c";
+                    updateTeam({
+                      ruleset: next ? "reg-m-c" : "custom",
+                      format: next ? "VGC 2026 REG M-C" : "Gen 9 Singles",
+                      members: team.members.map((member) =>
+                        changeStatSystem(member, next),
+                      ),
+                    });
+                    setCalculatorOpen(false);
+                    setMessage(
+                      "Ruleset updated. Review the converted levels and stat allocations before exporting.",
+                    );
+                  }}
+                >
+                  <option value="custom">Custom / Gen 9</option>
+                  <option value="reg-m-c">VGC 2026 REG M-C · Champions</option>
+                </select>
+              </label>
+              <label>
+                League / season notes
                 <input
                   maxLength={100}
                   value={team.format}
@@ -254,6 +289,28 @@ export default function TrainerHub() {
               </button>
             </div>
           </div>
+          {champions && (
+            <div className="panel space-y-2">
+              <h3 className="font-bold">REG M-C rules</h3>
+              <p className="muted">
+                Champions · level 50 · bring 6, choose 4 · Mega Evolution · 66
+                stat points, max 32 per stat · Species and Item Clauses.
+              </p>
+              <a
+                className="muted underline"
+                href="https://github.com/smogon/pokemon-showdown/blob/master/data/mods/champions/formats-data.ts"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Eligibility list · Showdown snapshot, November 17, 2026
+              </a>
+              {legalityIssues.map((issue) => (
+                <p className="text-sm text-amber-200" key={issue}>
+                  {issue}
+                </p>
+              ))}
+            </div>
+          )}
           <div className="panel">
             <h3 className="font-bold">Add Pokémon · {team.members.length}/6</h3>
             <label className="mt-3">
@@ -271,7 +328,9 @@ export default function TrainerHub() {
                   disabled={team.members.length >= 6}
                   key={p.name}
                   onClick={() => {
-                    updateTeam({ members: [...team.members, newMember(p)] });
+                    updateTeam({
+                      members: [...team.members, newMember(p, champions)],
+                    });
                     setSearch("");
                   }}
                 >
@@ -313,18 +372,20 @@ export default function TrainerHub() {
           {calculatorOpen &&
             team.members.length > 0 &&
             Object.keys(dex).length > 0 && (
-              <MatchupCalculator key={team.id} team={team} dex={dex} />
+              <MatchupCalculator
+                key={`${team.id}-${team.ruleset ?? "custom"}`}
+                team={team}
+                dex={dex}
+              />
             )}
           <div className="grid items-start gap-4 xl:grid-cols-2">
             {team.members.map((member) => {
               const species = dex[toID(member.species)];
-              const total = Object.values(member.evs).reduce(
-                (sum, value) => sum + value,
-                0,
-              );
-              const stats = species ? battleStats(member, species) : undefined;
               return (
-                <article className="panel space-y-4" key={member.id}>
+                <article
+                  className="panel pokemon-card space-y-4"
+                  key={member.id}
+                >
                   <div className="section-heading">
                     <div>
                       <h3 className="text-xl font-bold">{member.species}</h3>
@@ -403,6 +464,7 @@ export default function TrainerHub() {
                       Level
                       <input
                         type="number"
+                        disabled={champions}
                         min={1}
                         max={100}
                         value={member.level}
@@ -416,19 +478,21 @@ export default function TrainerHub() {
                         }
                       />
                     </label>
-                    <label>
-                      Tera type
-                      <select
-                        value={member.tera}
-                        onChange={(e) =>
-                          updateMember(member.id, { tera: e.target.value })
-                        }
-                      >
-                        {teraTypes.map((t) => (
-                          <option key={t}>{t}</option>
-                        ))}
-                      </select>
-                    </label>
+                    {!champions && (
+                      <label>
+                        Tera type
+                        <select
+                          value={member.tera}
+                          onChange={(e) =>
+                            updateMember(member.id, { tera: e.target.value })
+                          }
+                        >
+                          {teraTypes.map((t) => (
+                            <option key={t}>{t}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label>
                       Gender
                       <select
@@ -481,86 +545,11 @@ export default function TrainerHub() {
                       ))}
                     </div>
                   </fieldset>
-                  <p className="text-sm text-amber-200">
-                    EVs {total}/510 · {510 - total} remaining
-                  </p>
-                  <div className="overflow-x-auto">
-                    <table className="stat-table">
-                      <thead>
-                        <tr>
-                          <th>Stat</th>
-                          {statKeys.map((s) => (
-                            <th key={s}>{s.toUpperCase()}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <th>EV</th>
-                          {statKeys.map((s) => (
-                            <td key={s}>
-                              <input
-                                aria-label={`${member.species} ${s} EV`}
-                                type="number"
-                                min={0}
-                                max={Math.min(252, 510 - total + member.evs[s])}
-                                value={member.evs[s]}
-                                onChange={(e) =>
-                                  updateMember(member.id, {
-                                    evs: {
-                                      ...member.evs,
-                                      [s]: Math.max(
-                                        0,
-                                        Math.min(
-                                          252,
-                                          510 - total + member.evs[s],
-                                          Math.trunc(Number(e.target.value)),
-                                        ),
-                                      ),
-                                    },
-                                  })
-                                }
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <th>IV</th>
-                          {statKeys.map((s) => (
-                            <td key={s}>
-                              <input
-                                aria-label={`${member.species} ${s} IV`}
-                                type="number"
-                                min={0}
-                                max={31}
-                                value={member.ivs[s]}
-                                onChange={(e) =>
-                                  updateMember(member.id, {
-                                    ivs: {
-                                      ...member.ivs,
-                                      [s]: Math.max(
-                                        0,
-                                        Math.min(
-                                          31,
-                                          Math.trunc(Number(e.target.value)),
-                                        ),
-                                      ),
-                                    },
-                                  })
-                                }
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          <th>Total</th>
-                          {statKeys.map((s) => (
-                            <td key={s}>{stats?.[s] ?? "—"}</td>
-                          ))}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                  <StatEditor
+                    member={member}
+                    species={species}
+                    onChange={(update) => updateMember(member.id, update)}
+                  />
                 </article>
               );
             })}
@@ -656,7 +645,7 @@ export default function TrainerHub() {
                 disabled={!Object.keys(dex).length || !text.trim()}
                 onClick={() => {
                   try {
-                    const members = importTeam(text, dex);
+                    const members = importTeam(text, dex, champions);
                     updateTeam({ members });
                     setMessage(`Imported ${members.length} Pokémon.`);
                   } catch (error) {

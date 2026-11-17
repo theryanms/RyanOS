@@ -23,3 +23,4 @@ Bundled data retrieved November 17, 2026 from
 https://play.pokemonshowdown.com/data/pokedex.json
 https://play.pokemonshowdown.com/data/moves.json
 Upstream project https://github.com/smogon/pokemon-showdown
+Champions eligibility source https://github.com/smogon/pokemon-showdown/blob/master/data/mods/champions/formats-data.ts (retrieved November 17, 2026)
